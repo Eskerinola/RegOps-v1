@@ -147,12 +147,15 @@ function actualizarMayorV1() {
   }
 
   var cuentasCero = cuentas.filter(function(cuenta) {
-    return Math.abs(Number(cuenta.fila[1]) || 0) < 0.5;
+    return !/^Retiro\b/i.test(cuenta.nombre) &&
+      Math.abs(Number(cuenta.fila[1]) || 0) < 0.5;
   });
 
   ['ACTIVO', 'PATRIMONIO', 'RESULTADO'].forEach(function(grupo) {
     var grupoCuentas = cuentas.filter(function(cuenta) {
-      return cuenta.grupo === grupo && Math.abs(Number(cuenta.fila[1]) || 0) >= 0.5;
+      return cuenta.grupo === grupo &&
+        !/^Retiro\b/i.test(cuenta.nombre) &&
+        Math.abs(Number(cuenta.fila[1]) || 0) >= 0.5;
     });
 
     if (!grupoCuentas.length) return;
