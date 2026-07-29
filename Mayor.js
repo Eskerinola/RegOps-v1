@@ -166,6 +166,7 @@ function actualizarMayorV1() {
   mayor.clear();
   mayor.getRange(1, 1, filas.length, ultimaColumna).setValues(filas);
   aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMeses);
+  asegurarBotonActualizarMayorV1_(ss);
   SpreadsheetApp.flush();
 
   ss.toast(
@@ -333,4 +334,64 @@ function aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMese
       }
     }
   }
+}
+
+
+/**
+ * Crea o corrige el botón de actualización del Mayor.
+ * Conserva una sola imagen y la vincula con actualizarMayorV1.
+ */
+function asegurarBotonActualizarMayorV1_(ss) {
+  ss = ss || SpreadsheetApp.getActive();
+  var hoja = ss.getSheetByName('Mayor');
+  if (!hoja) return;
+
+  var titulo = 'RegOps v1 - Actualizar Mayor';
+  var existentes = hoja.getImages().filter(function(imagen) {
+    var tituloActual = '';
+    var scriptActual = '';
+
+    try { tituloActual = imagen.getAltTextTitle(); } catch (err) {}
+    try { scriptActual = imagen.getScript(); } catch (err) {}
+
+    return tituloActual === titulo || scriptActual === 'actualizarMayorV1';
+  });
+
+  if (existentes.length > 0) {
+    var botonExistente = existentes[0];
+    existentes.slice(1).forEach(function(imagen) { imagen.remove(); });
+
+    botonExistente
+      .setAltTextTitle(titulo)
+      .setAltTextDescription('Actualiza el Libro Mayor de RegOps v1.')
+      .setAnchorCell(hoja.getRange('A1'))
+      .setAnchorCellXOffset(0)
+      .setAnchorCellYOffset(0)
+      .setWidth(125)
+      .setHeight(27)
+      .assignScript('actualizarMayorV1');
+
+    return;
+  }
+
+  var pngBase64 = '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';
+  var blob = Utilities.newBlob(
+    Utilities.base64Decode(pngBase64),
+    'image/png',
+    'Actualizar-Mayor-v1.png'
+  );
+
+  hoja.insertImage(blob, 1, 1, 4, 2)
+    .setAltTextTitle(titulo)
+    .setAltTextDescription('Actualiza el Libro Mayor de RegOps v1.')
+    .setAnchorCell(hoja.getRange('A1'))
+    .setAnchorCellXOffset(0)
+    .setAnchorCellYOffset(0)
+    .setWidth(125)
+    .setHeight(27)
+    .assignScript('actualizarMayorV1');
+}
+
+function instalarBotonActualizarMayorV1() {
+  asegurarBotonActualizarMayorV1_(SpreadsheetApp.getActive());
 }
