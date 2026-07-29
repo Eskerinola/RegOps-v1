@@ -1,0 +1,18 @@
+{
+  "timeZone": "America/Argentina/Buenos_Aires",
+  "dependencies": {
+  },
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "sheets": {
+    "macros": [{
+      "menuName": "copyNowValueToCurrentCell",
+      "functionName": "copyNowValueToCurrentCell",
+      "defaultShortcut": "Ctrl+Alt+Shift+1"
+    }, {
+      "menuName": "insertStaticTimestamp",
+      "functionName": "insertStaticTimestamp",
+      "defaultShortcut": "Ctrl+Alt+Shift+9"
+    }]
+  }
+}
