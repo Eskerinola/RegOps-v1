@@ -28,6 +28,7 @@ var CONFIG = {
 function onOpen() {
   var ss = SpreadsheetApp.getActive();
   prepararHojasRegOpsV1_(ss);
+  asegurarFormatoOperacionesCompensadas_(ss);
 
   ss.addMenu('RegOps v1', [
     { name: 'Actualizar Mayor', functionName: 'actualizarMayorV1' }
@@ -65,6 +66,46 @@ function prepararHojasRegOpsV1_(ss) {
   if (!ss.getSheetByName('Mayor')) {
     ss.insertSheet('Mayor');
   }
+}
+
+
+/**
+ * Baja la intensidad visual de las operaciones compensadas:
+ * D y F tienen igual importe con signo contrario.
+ * La regla se agrega al final para no tapar alertas existentes.
+ */
+function asegurarFormatoOperacionesCompensadas_(ss) {
+  ss = ss || SpreadsheetApp.getActive();
+  var diario = ss.getSheetByName('Diario');
+  if (!diario) return;
+
+  var formula = '=AND($D6<>"";$F6<>"";ABS($D6+$F6)<0,01)';
+  var reglas = diario.getConditionalFormatRules().filter(function(regla) {
+    try {
+      var condicion = regla.getBooleanCondition();
+      if (!condicion) return true;
+
+      var valores = condicion.getCriteriaValues();
+      return !(valores && String(valores[0]) === formula);
+    } catch (err) {
+      return true;
+    }
+  });
+
+  var rango = diario.getRange(6, 1, diario.getMaxRows() - 5, 7);
+  var reglaCompensada = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(formula)
+    .setFontColor('#8a8a8a')
+    .setBackground('#f7f7f7')
+    .setRanges([rango])
+    .build();
+
+  reglas.push(reglaCompensada);
+  diario.setConditionalFormatRules(reglas);
+}
+
+function instalarFormatoOperacionesCompensadas() {
+  asegurarFormatoOperacionesCompensadas_(SpreadsheetApp.getActive());
 }
 
 
