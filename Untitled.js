@@ -78,7 +78,7 @@ function onEdit(e) {
   if (!e || !e.range) return;
 
   var lock = LockService.getScriptLock();
-  if (!lock.tryLock(3000)) return;
+  if (!lock.tryLock(10000)) return;
 
   try {
     var range      = e.range;
@@ -121,17 +121,47 @@ function onEdit(e) {
 
     if (isMassEdit) {
       logAudit_(ss, e, userEmail, 'ALLOWED — mass edit');
+    }
+
+    // 3. Timestamp automático en Diario.
+    // Funciona tanto para una celda como para pegados de varias filas.
+    var primeraColumna = range.getColumn();
+    var ultimaColumna = primeraColumna + range.getNumColumns() - 1;
+    var incluyeColumnaIngreso =
+      primeraColumna <= CONFIG.TEXT_COLUMN &&
+      ultimaColumna >= CONFIG.TEXT_COLUMN;
+
+    if (sheetName === 'Diario' && incluyeColumnaIngreso) {
+      var primeraFila = Math.max(range.getRow(), 6);
+      var ultimaFila = range.getLastRow();
+
+      if (ultimaFila >= primeraFila) {
+        var cantidadFilas = ultimaFila - primeraFila + 1;
+        var nombres = sheet
+          .getRange(primeraFila, CONFIG.TEXT_COLUMN, cantidadFilas, 1)
+          .getDisplayValues();
+        var rangoTimestamps = sheet
+          .getRange(primeraFila, CONFIG.TIMESTAMP_COLUMN, cantidadFilas, 1);
+        var timestampsActuales = rangoTimestamps.getValues();
+        var ahora = new Date();
+
+        var timestampsNuevos = nombres.map(function(fila, indice) {
+          var nombre = String(fila[0] || '').trim();
+
+          if (nombre === '') return [''];
+          if (timestampsActuales[indice][0]) return [timestampsActuales[indice][0]];
+          return [ahora];
+        });
+
+        rangoTimestamps
+          .setValues(timestampsNuevos)
+          .setNumberFormat('yyyy-MM-dd HH:mm');
+      }
+
       return;
     }
 
-    // 3. Datestamp automático en Diario
-    if (sheetName === 'Diario' &&
-        range.getNumRows() === 1 && range.getNumColumns() === 1 &&
-        col === CONFIG.TEXT_COLUMN) {
-
-      var tsCell = sheet.getRange(row, CONFIG.TIMESTAMP_COLUMN);
-      tsCell.setValue(new Date()).setNumberFormat('yyyy-MM-dd HH:mm');
-    }
+    if (isMassEdit) return;
 
   } catch (err) {
     Logger.log('onEdit error: ' + err);
