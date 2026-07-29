@@ -8,7 +8,7 @@
 var REGOPS_CUENTAS_V1 = {
   HOJA_CUENTAS: 'CtasDefinicion',
   HOJA_DIARIO: 'Diario',
-  FILA_ENCABEZADO_CUENTAS: 2,
+  FILA_ENCABEZADO_CUENTAS: 1,
   PRIMERA_FILA_CUENTAS: 3,
   FILA_ENCABEZADO_DIARIO: 5,
   PRIMERA_FILA_DIARIO: 6,
@@ -16,7 +16,7 @@ var REGOPS_CUENTAS_V1 = {
   COLUMNA_CUENTA_2: 5,
   ENCABEZADO_ID_1: 'Cuenta 1 ID',
   ENCABEZADO_ID_2: 'Cuenta 2 ID',
-  VERSION_MODELO: '3',
+  VERSION_MODELO: '4',
   PROPIEDAD_VERSION: 'REGOPS_V1_MODELO_CUENTAS',
   PROPIEDAD_SIGUIENTE_ID: 'REGOPS_V1_SIGUIENTE_ID'
 };
@@ -518,13 +518,7 @@ function normalizarPlanCuentasV1_(hoja) {
       a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' });
   });
 
-  hoja.getRange('A2:E2').setValues([[
-    'Cuenta',
-    'ID',
-    'Grupo',
-    'Estado (1=Activa, 0=Inactiva)',
-    'Orden'
-  ]]);
+  prepararEncabezadoCuentasV1_(hoja);
 
   hoja.getRange(primeraFila, 1, cantidadAnterior, 5).clearContent();
 
@@ -551,6 +545,39 @@ function normalizarPlanCuentasV1_(hoja) {
 }
 
 
+/**
+ * Mantiene el encabezado en la fila 1 y reserva la fila 2 para notas.
+ * Solo limpia la fila 2 durante la migración si todavía contiene
+ * una copia exacta del encabezado anterior.
+ */
+function prepararEncabezadoCuentasV1_(hoja) {
+  var encabezado = [
+    'Cuenta',
+    'ID',
+    'Grupo',
+    'Estado (1=Activa, 0=Inactiva)',
+    'Orden'
+  ];
+
+  hoja.getRange(1, 1, 1, 5).setValues([encabezado]);
+
+  var fila2 = hoja.getRange(2, 1, 1, 5);
+  var valoresFila2 = fila2.getDisplayValues()[0];
+  var esEncabezadoAnterior = encabezado.every(function(valor, indice) {
+    return String(valoresFila2[indice] || '').trim() === valor;
+  });
+
+  if (esEncabezadoAnterior) {
+    fila2
+      .clearContent()
+      .setBackground('#ffffff')
+      .setFontColor('#000000')
+      .setFontWeight('normal')
+      .setFontFamily('Nunito');
+  }
+}
+
+
 function normalizarGrupoCuentaV1_(grupo, nombre) {
   var texto = String(grupo || '').trim().toLowerCase();
 
@@ -565,7 +592,7 @@ function normalizarGrupoCuentaV1_(grupo, nombre) {
 
 
 function aplicarFormatoPlanCuentasV1_(hoja, cantidadFilas) {
-  hoja.getRange('A2:E2')
+  hoja.getRange('A1:E1')
     .setBackground('#424242')
     .setFontColor('#ffffff')
     .setFontWeight('bold')
