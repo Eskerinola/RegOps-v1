@@ -29,10 +29,12 @@ function onOpen() {
   var ss = SpreadsheetApp.getActive();
   prepararHojasRegOpsV1_(ss);
   asegurarFormatoOperacionesCompensadas_(ss);
+  asegurarModeloRelacionalCuentasV1_(ss);
 
   ss.addMenu('RegOps v1', [
     { name: 'Actualizar Mayor', functionName: 'actualizarMayorV1' },
-    { name: 'Actualizar cuentas desde v2', functionName: 'actualizarEstructuraCuentasDesdeV2' }
+    { name: 'Actualizar cuentas desde v2', functionName: 'actualizarEstructuraCuentasDesdeV2' },
+    { name: 'Instalar modelo de cuentas por ID', functionName: 'instalarModeloRelacionalCuentasV1' }
   ]);
 
   actualizarMayorV1();
@@ -165,7 +167,26 @@ function onEdit(e) {
       logAudit_(ss, e, userEmail, 'ALLOWED — mass edit');
     }
 
-    // 3. Timestamp automático en Diario.
+    // 3. Mantener el plan de cuentas como tabla maestra.
+    var primeraColumnaEditada = range.getColumn();
+    var ultimaColumnaEditada = range.getLastColumn();
+    var tocaEstructuraCuentas =
+      sheetName === 'CtasDefinicion' &&
+      range.getLastRow() >= 3 &&
+      primeraColumnaEditada <= 5 &&
+      ultimaColumnaEditada >= 1;
+
+    if (tocaEstructuraCuentas) {
+      procesarEdicionPlanCuentasV1_(ss);
+      return;
+    }
+
+    // 4. En Diario, C y E muestran nombres pero guardan ID ocultos.
+    if (sheetName === 'Diario') {
+      actualizarIdsCuentasEditadasV1_(sheet, range);
+    }
+
+    // 5. Timestamp automático en Diario.
     // Funciona tanto para una celda como para pegados de varias filas.
     var primeraColumna = range.getColumn();
     var ultimaColumna = primeraColumna + range.getNumColumns() - 1;
@@ -200,13 +221,15 @@ function onEdit(e) {
           .setNumberFormat('yyyy-MM-dd HH:mm');
       }
 
-      return;
     }
 
     if (isMassEdit) return;
 
   } catch (err) {
     Logger.log('onEdit error: ' + err);
+    try {
+      SpreadsheetApp.getActive().toast(String(err.message || err), 'RegOps v1', 8);
+    } catch (_) {}
   } finally {
     lock.releaseLock();
   }
