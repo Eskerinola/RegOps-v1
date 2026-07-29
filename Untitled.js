@@ -26,9 +26,35 @@ var CONFIG = {
  */
 
 function onOpen() {
-  var ss    = SpreadsheetApp.getActive();
-  var sheet = ss.getSheetByName('RegOps') || ss.getSheets()[0];
-  if (sheet) ss.setActiveSheet(sheet);
+  var ss = SpreadsheetApp.getActive();
+  prepararHojasRegOpsV1_(ss);
+
+  var diario = ss.getSheetByName('Diario');
+  if (diario) ss.setActiveSheet(diario);
+}
+
+/**
+ * Renombra la hoja operativa y crea el Mayor sin sobrescribir hojas existentes.
+ * Puede ejecutarse más de una vez sin duplicar hojas.
+ */
+function prepararHojasRegOpsV1_(ss) {
+  ss = ss || SpreadsheetApp.getActive();
+
+  var diario = ss.getSheetByName('Diario');
+  var regOps = ss.getSheetByName('RegOps');
+
+  if (!diario && regOps) {
+    regOps.setName('Diario');
+    diario = regOps;
+  }
+
+  if (!diario) {
+    throw new Error('No se encontró la hoja "RegOps" ni la hoja "Diario".');
+  }
+
+  if (!ss.getSheetByName('Mayor')) {
+    ss.insertSheet('Mayor');
+  }
 }
 
 
@@ -88,8 +114,8 @@ function onEdit(e) {
       return;
     }
 
-    // 3. Datestamp automático en RegOps
-    if (sheetName === 'RegOps' &&
+    // 3. Datestamp automático en Diario
+    if (sheetName === 'Diario' &&
         range.getNumRows() === 1 && range.getNumColumns() === 1 &&
         col === CONFIG.TEXT_COLUMN) {
 
@@ -129,7 +155,7 @@ function procesarHoja_(sheet) {
 
   var rawName = sheet.getName().toLowerCase().trim();
   var isReport = rawName.includes('report') || rawName.includes('reporte');
-  var isRegOps = rawName.includes('regops');
+  var isDiario = rawName === 'diario';
 
   var colFecha = isReport ? 2 : 1;
   var startRow = 4;
@@ -151,8 +177,8 @@ function procesarHoja_(sheet) {
     if (clave1 && clave2 && clave1 !== clave2) {
       var rowNum = startRow + i;
 
-      if (isRegOps) {
-        // En RegOps dibuja la línea SOLAMENTE desde la Columna A (1) a la J (10)
+      if (isDiario) {
+        // En Diario dibuja la línea SOLAMENTE desde la Columna A (1) a la J (10)
         sheet.getRange(rowNum, 1, 1, 10)
              .setBorder(null, null, true, null, null, null, "black", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
       } else {
