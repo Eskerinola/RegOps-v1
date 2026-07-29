@@ -75,7 +75,7 @@ function actualizarMayorV1() {
 
   var filaMeses = nuevaFilaMayorV1_(ultimaColumna);
   filaMeses[0] = 'T/C Euro/USD';
-  filaMeses[2] = tasaEuroUsd;
+  filaMeses[2] = Number(diario.getRange('L1').getValue()) || 0;
   filas.push(filaMeses);
   tipos.push('meses');
 
@@ -338,7 +338,8 @@ function aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMese
 
   rango.setNumberFormat('#,##0;[Red](#,##0);-');
   mayor.getRange(2, 1, 2, 1).setNumberFormat('@');
-  mayor.getRange(2, 3, 2, 1).setNumberFormat('0.00');
+  mayor.getRange(2, 3).setNumberFormat('#,##0');
+  mayor.getRange(3, 3).setNumberFormat('0.00');
   if (cantidadMeses > 0) {
     mayor.getRange(4, 4, 1, cantidadMeses).setNumberFormat('yyyy-mm');
   }
