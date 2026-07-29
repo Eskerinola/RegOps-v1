@@ -4,7 +4,7 @@
  * Las cuentas exclusivas de v1 conservan sus datos actuales.
  */
 function actualizarEstructuraCuentasDesdeV2() {
-  var ID_REGOPS_V2 = '18doMyPGnRoUh6uIPsXy-MkYS7X1477gING3DtHFGn_A';
+  var ID_REGOPS_V2 = '18doMvPGnRoUh6uIPsXx-MkYS7X1477qlNG3DtHFGn_A';
   var NOMBRE_HOJA = 'CtasDefinicion';
 
   var ssV1 = SpreadsheetApp.getActive();
