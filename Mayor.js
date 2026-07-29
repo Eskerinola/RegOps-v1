@@ -28,6 +28,45 @@ function actualizarMayorV1() {
     .getRange(15, 11, nombresPlan.length, 2 + cantidadMeses)
     .getValues();
 
+  var cuentas = cuentasFuente.map(function(origen, indice) {
+    var nombre = String(origen[0] || nombresPlan[indice] || '').trim();
+    return {
+      nombre: nombre,
+      grupo: grupoCuentaMayorV1_(nombre),
+      fila: convertirCuentaMayorV1_(
+        nombre,
+        origen,
+        meses,
+        ultimaColumna,
+        tasaArsActual,
+        tasaEuroUsd,
+        tasaBrlUsd
+      )
+    };
+  }).filter(function(cuenta) {
+    return cuenta.nombre !== '';
+  });
+
+  var definicionesResumen = [
+    { nombre: 'CJ ARS (USD)', coincide: function(n) { return /^CJ\b/i.test(n) && /\bARS\b/i.test(n); } },
+    { nombre: 'CJ USD', coincide: function(n) { return /^CJ\b/i.test(n) && /\bUSD\b/i.test(n); } },
+    { nombre: 'CJ EURO (USD)', coincide: function(n) { return /^CJ\b/i.test(n) && /\b(EURO|EUR)\b/i.test(n); } },
+    { nombre: 'CJ BRL (USD)', coincide: function(n) { return /^CJ\b/i.test(n) && /\b(BRL|REAL|REALES)\b/i.test(n); } },
+    { nombre: 'CC ARS (USD)', coincide: function(n) { return /^CC\b/i.test(n) && /\bARS\b/i.test(n); } },
+    { nombre: 'CC USD', coincide: function(n) { return /^CC\b/i.test(n) && /\bUSD\b/i.test(n); } },
+    { nombre: 'CC BRL (USD)', coincide: function(n) { return /^CC\b/i.test(n) && /\b(BRL|REAL|REALES)\b/i.test(n); } },
+    { nombre: 'INV USD (terceros)', coincide: function(n) { return /^INV\s/i.test(n) && !/^INVP\b/i.test(n); } },
+    { nombre: 'INVP USD (TT)', coincide: function(n) { return /^INVP\b/i.test(n); } }
+  ];
+
+  var resumenes = definicionesResumen.map(function(definicion) {
+    return acumularCuentasMayorV1_(
+      definicion.nombre,
+      cuentas.filter(function(cuenta) { return definicion.coincide(cuenta.nombre); }),
+      ultimaColumna
+    );
+  });
+
   var filas = [];
   var tipos = [];
 
@@ -68,7 +107,9 @@ function actualizarMayorV1() {
 
   var filaPatrimonio = nuevaFilaMayorV1_(ultimaColumna);
   filaPatrimonio[0] = 'Patrimonio Neto (USD)';
-  filaPatrimonio[1] = Number(diario.getRange('L4').getValue()) || 0;
+  filaPatrimonio[1] = resumenes.reduce(function(total, fila) {
+    return total + (Number(fila[1]) || 0);
+  }, 0);
   filaPatrimonio[2] = 'Resultados (USD)';
   meses.forEach(function(mes, indice) {
     filaPatrimonio[3 + indice] = Number(mes.patrimonio) || 0;
@@ -80,11 +121,7 @@ function actualizarMayorV1() {
   tipos.push('titulo');
 
   var resumenCero = [];
-  resumenFuente.forEach(function(origen) {
-    var nombre = normalizarNombreResumenMayorV1_(origen[0]);
-    if (!nombre || /^Retiros /i.test(nombre)) return;
-
-    var fila = convertirFilaFuenteMayorV1_(nombre, origen, cantidadMeses, ultimaColumna, true);
+  resumenes.forEach(function(fila) {
     if (Math.abs(Number(fila[1]) || 0) < 0.5) {
       resumenCero.push(fila);
     } else {
@@ -96,37 +133,18 @@ function actualizarMayorV1() {
   filas.push(nuevaFilaMayorV1_(ultimaColumna));
   tipos.push('libre');
 
-  var retiroFuente = resumenFuente[7];
-  if (retiroFuente && retiroFuente[0]) {
-    var filaRetiro = convertirFilaFuenteMayorV1_(
+  var cuentasRetiro = cuentas.filter(function(cuenta) {
+    return /^Retiro\b/i.test(cuenta.nombre);
+  });
+  if (cuentasRetiro.length) {
+    var filaRetiro = acumularCuentasMayorV1_(
       'Retiros ARS (USD) en ' + cantidadMeses + ' meses',
-      retiroFuente,
-      cantidadMeses,
-      ultimaColumna,
-      true
+      cuentasRetiro,
+      ultimaColumna
     );
     filas.push(filaRetiro);
     tipos.push('retiro');
   }
-
-  var cuentas = cuentasFuente.map(function(origen, indice) {
-    var nombre = String(origen[0] || nombresPlan[indice] || '').trim();
-    return {
-      nombre: nombre,
-      grupo: grupoCuentaMayorV1_(nombre),
-      fila: convertirCuentaMayorV1_(
-        nombre,
-        origen,
-        meses,
-        ultimaColumna,
-        tasaArsActual,
-        tasaEuroUsd,
-        tasaBrlUsd
-      )
-    };
-  }).filter(function(cuenta) {
-    return cuenta.nombre !== '';
-  });
 
   var cuentasCero = cuentas.filter(function(cuenta) {
     return Math.abs(Number(cuenta.fila[1]) || 0) < 0.5;
@@ -230,6 +248,23 @@ function convertirCuentaMayorV1_(nombre, origen, meses, ultimaColumna, tasaArsAc
       tasaBrlUsd
     );
   }
+
+  fila[2] = fila.slice(3).reduce(function(total, valor) {
+    return total + (Number(valor) || 0);
+  }, 0);
+
+  return fila;
+}
+
+function acumularCuentasMayorV1_(nombre, cuentas, ultimaColumna) {
+  var fila = nuevaFilaMayorV1_(ultimaColumna);
+  fila[0] = nombre;
+
+  cuentas.forEach(function(cuenta) {
+    for (var col = 1; col < ultimaColumna; col++) {
+      fila[col] = (Number(fila[col]) || 0) + (Number(cuenta.fila[col]) || 0);
+    }
+  });
 
   return fila;
 }
