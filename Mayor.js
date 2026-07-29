@@ -13,6 +13,9 @@ function actualizarMayorV1() {
   var meses = mesesFuente.slice().reverse();
   var cantidadMeses = meses.length;
   var ultimaColumna = 3 + cantidadMeses;
+  var tasaArsActual = Number(diario.getRange('L2').getValue()) || 1;
+  var tasaEuroUsd = Number(diario.getRange('L1').getValue()) / tasaArsActual || 1;
+  var tasaBrlUsd = 0.20;
 
   var nombresPlan = definicion
     .getRange(3, 1, Math.max(definicion.getLastRow() - 2, 1), 1)
@@ -33,7 +36,7 @@ function actualizarMayorV1() {
 
   var filaMeses = nuevaFilaMayorV1_(ultimaColumna);
   filaMeses[0] = 'T/C Euro/USD';
-  filaMeses[2] = Number(diario.getRange('L1').getValue()) / Number(diario.getRange('L2').getValue());
+  filaMeses[2] = tasaEuroUsd;
   meses.forEach(function(mes, indice) {
     filaMeses[3 + indice] = formatearMesMayorV1_(mes.valor);
   });
@@ -42,6 +45,7 @@ function actualizarMayorV1() {
 
   var filaBrl = nuevaFilaMayorV1_(ultimaColumna);
   filaBrl[0] = 'T/C BRL/USD';
+  filaBrl[2] = tasaBrlUsd;
   filas.push(filaBrl);
   tipos.push('tasa');
 
@@ -54,7 +58,7 @@ function actualizarMayorV1() {
 
   var tasasArs = nuevaFilaMayorV1_(ultimaColumna);
   tasasArs[0] = 'T/C ARS/USD';
-  tasasArs[2] = diario.getRange('L2').getValue();
+  tasasArs[2] = tasaArsActual;
   meses.forEach(function(mes, indice) {
     tasasArs[3 + indice] = mes.tasa;
   });
@@ -109,7 +113,15 @@ function actualizarMayorV1() {
     return {
       nombre: nombre,
       grupo: grupoCuentaMayorV1_(nombre),
-      fila: convertirFilaFuenteMayorV1_(nombre, origen, cantidadMeses, ultimaColumna, true)
+      fila: convertirCuentaMayorV1_(
+        nombre,
+        origen,
+        meses,
+        ultimaColumna,
+        tasaArsActual,
+        tasaEuroUsd,
+        tasaBrlUsd
+      )
     };
   }).filter(function(cuenta) {
     return cuenta.nombre !== '';
@@ -193,6 +205,40 @@ function convertirFilaFuenteMayorV1_(nombre, origen, cantidadMeses, ultimaColumn
   }
 
   return fila;
+}
+
+function convertirCuentaMayorV1_(nombre, origen, meses, ultimaColumna, tasaArsActual, tasaEuroUsd, tasaBrlUsd) {
+  var fila = nuevaFilaMayorV1_(ultimaColumna);
+  fila[0] = nombre;
+  fila[1] = convertirMonedaMayorV1_(
+    Number(origen[1]) || 0,
+    nombre,
+    tasaArsActual,
+    tasaEuroUsd,
+    tasaBrlUsd
+  );
+
+  for (var i = 0; i < meses.length; i++) {
+    var indiceFuente = 2 + meses.length - 1 - i;
+    fila[3 + i] = convertirMonedaMayorV1_(
+      Number(origen[indiceFuente]) || 0,
+      nombre,
+      Number(meses[i].tasa) || tasaArsActual,
+      tasaEuroUsd,
+      tasaBrlUsd
+    );
+  }
+
+  return fila;
+}
+
+function convertirMonedaMayorV1_(importe, nombre, tasaArsUsd, tasaEuroUsd, tasaBrlUsd) {
+  var cuenta = String(nombre || '').toUpperCase();
+
+  if (/\bARS\b/.test(cuenta)) return importe / tasaArsUsd / 1000;
+  if (/\bEURO\b|\bEUR\b/.test(cuenta)) return importe * tasaEuroUsd / 1000;
+  if (/\bBRL\b|\bREAL(?:ES)?\b/.test(cuenta)) return importe * tasaBrlUsd / 1000;
+  return importe / 1000;
 }
 
 function nuevaFilaMayorV1_(cantidadColumnas) {
