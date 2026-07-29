@@ -16,7 +16,7 @@ var REGOPS_CUENTAS_V1 = {
   COLUMNA_CUENTA_2: 5,
   ENCABEZADO_ID_1: 'Cuenta 1 ID',
   ENCABEZADO_ID_2: 'Cuenta 2 ID',
-  VERSION_MODELO: '2',
+  VERSION_MODELO: '3',
   PROPIEDAD_VERSION: 'REGOPS_V1_MODELO_CUENTAS',
   PROPIEDAD_SIGUIENTE_ID: 'REGOPS_V1_SIGUIENTE_ID'
 };
@@ -120,6 +120,7 @@ function instalarModeloRelacionalCuentasV1_(ss) {
 
   normalizarPlanCuentasV1_(hojaCuentas);
   aplicarFormatoEstadosCuentasV1_(hojaCuentas);
+  aplicarTipografiaNunitoRegOpsV1_(ss);
 
   var mapa = obtenerMapaCuentasV1_(hojaCuentas);
   var columnasId = asegurarColumnasIdDiarioV1_(diario);
@@ -511,6 +512,12 @@ function normalizarPlanCuentasV1_(hoja) {
     posicionGrupo[cuenta.grupo] = posicion + 1;
   });
 
+  // La disposición final depende exclusivamente de Orden, nunca del ID.
+  cuentas.sort(function(a, b) {
+    return a.orden - b.orden ||
+      a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' });
+  });
+
   hoja.getRange('A2:E2').setValues([[
     'Cuenta',
     'ID',
@@ -580,27 +587,56 @@ function aplicarFormatoPlanCuentasV1_(hoja, cantidadFilas) {
 
 
 function aplicarFormatoEstadosCuentasV1_(hoja) {
-  var formula = '=$D3=2';
+  var formulaEstado2 = '=$D3=2';
+  var formulaInactiva = '=$D3=0';
+  var formulasPropias = [formulaEstado2, formulaInactiva];
+
   var reglas = hoja.getConditionalFormatRules().filter(function(regla) {
     try {
       var condicion = regla.getBooleanCondition();
       if (!condicion) return true;
       var valores = condicion.getCriteriaValues();
-      return !(valores && String(valores[0]) === formula);
+      return !(valores && formulasPropias.indexOf(String(valores[0])) !== -1);
     } catch (err) {
       return true;
     }
   });
 
   var rango = hoja.getRange(3, 1, hoja.getMaxRows() - 2, 5);
+
   var reglaEstado2 = SpreadsheetApp.newConditionalFormatRule()
-    .whenFormulaSatisfied(formula)
+    .whenFormulaSatisfied(formulaEstado2)
     .setBackground('#f4cccc')
     .setRanges([rango])
     .build();
 
+  var reglaInactiva = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(formulaInactiva)
+    .setBackground('#e6d9f2')
+    .setRanges([rango])
+    .build();
+
+  reglas.unshift(reglaInactiva);
   reglas.unshift(reglaEstado2);
   hoja.setConditionalFormatRules(reglas);
+}
+
+
+/**
+ * Nunito se aplica a todas las celdas actualmente utilizadas.
+ * Los generadores y las nuevas filas del plan también la mantienen.
+ */
+function aplicarTipografiaNunitoRegOpsV1_(ss) {
+  ss = ss || SpreadsheetApp.getActive();
+
+  ss.getSheets().forEach(function(hoja) {
+    var ultimaFila = Math.max(hoja.getLastRow(), 1);
+    var ultimaColumna = Math.max(hoja.getLastColumn(), 1);
+
+    hoja
+      .getRange(1, 1, ultimaFila, ultimaColumna)
+      .setFontFamily('Nunito');
+  });
 }
 
 
