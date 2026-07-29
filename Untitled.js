@@ -29,6 +29,10 @@ function onOpen() {
   var ss = SpreadsheetApp.getActive();
   prepararHojasRegOpsV1_(ss);
 
+  ss.addMenu('RegOps v1', [
+    { name: 'Actualizar Mayor', functionName: 'actualizarMayorV1' }
+  ]);
+
   var diario = ss.getSheetByName('Diario');
   if (diario) ss.setActiveSheet(diario);
 }
