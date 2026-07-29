@@ -105,7 +105,57 @@ function asegurarFormatoOperacionesCompensadas_(ss) {
 
   reglas.push(reglaCompensada);
   diario.setConditionalFormatRules(reglas);
+
+  // Limpieza única de fondos grises heredados en filas que no compensan.
+  var propiedades = PropertiesService.getDocumentProperties();
+  if (propiedades.getProperty('REGOPS_V1_FONDO_DIARIO') !== '2') {
+    limpiarFondosGrisesNoCompensadosV1_(diario, 6, diario.getLastRow());
+    propiedades.setProperty('REGOPS_V1_FONDO_DIARIO', '2');
+  }
 }
+
+/**
+ * Convierte en blanco solamente los fondos grises heredados.
+ * No toca filas compensadas ni fondos de otros colores.
+ */
+function limpiarFondosGrisesNoCompensadosV1_(diario, primeraFila, ultimaFila) {
+  primeraFila = Math.max(Number(primeraFila) || 6, 6);
+  ultimaFila = Math.min(Number(ultimaFila) || diario.getLastRow(), diario.getMaxRows());
+  if (ultimaFila < primeraFila) return;
+
+  var cantidadFilas = ultimaFila - primeraFila + 1;
+  var montos = diario.getRange(primeraFila, 4, cantidadFilas, 3).getValues();
+  var rangoVisual = diario.getRange(primeraFila, 1, cantidadFilas, 7);
+  var fondos = rangoVisual.getBackgrounds();
+  var grisesHeredados = {
+    '#faf9f9': true,
+    '#f7f7f7': true,
+    '#f8f8f8': true
+  };
+  var huboCambios = false;
+
+  for (var i = 0; i < cantidadFilas; i++) {
+    var montoD = montos[i][0];
+    var montoF = montos[i][2];
+    var compensa =
+      montoD !== '' && montoD !== null &&
+      montoF !== '' && montoF !== null &&
+      Math.abs(Number(montoD) + Number(montoF)) < 0.01;
+
+    if (compensa) continue;
+
+    for (var col = 0; col < 7; col++) {
+      var fondo = String(fondos[i][col] || '').toLowerCase();
+      if (grisesHeredados[fondo]) {
+        fondos[i][col] = '#ffffff';
+        huboCambios = true;
+      }
+    }
+  }
+
+  if (huboCambios) rangoVisual.setBackgrounds(fondos);
+}
+
 
 function instalarFormatoOperacionesCompensadas() {
   asegurarFormatoOperacionesCompensadas_(SpreadsheetApp.getActive());
@@ -184,6 +234,19 @@ function onEdit(e) {
     // 4. En Diario, C y E muestran nombres pero guardan ID ocultos.
     if (sheetName === 'Diario') {
       actualizarIdsCuentasEditadasV1_(sheet, range);
+
+      var tocaZonaVisible =
+        range.getColumn() <= 7 &&
+        range.getLastColumn() >= 1 &&
+        range.getLastRow() >= 6;
+
+      if (tocaZonaVisible) {
+        limpiarFondosGrisesNoCompensadosV1_(
+          sheet,
+          Math.max(range.getRow(), 6),
+          range.getLastRow()
+        );
+      }
     }
 
     // 5. Timestamp automático en Diario.
