@@ -33,6 +33,8 @@ function onOpen() {
     { name: 'Actualizar Mayor', functionName: 'actualizarMayorV1' }
   ]);
 
+  actualizarMayorV1();
+
   var diario = ss.getSheetByName('Diario');
   if (diario) ss.setActiveSheet(diario);
 }
