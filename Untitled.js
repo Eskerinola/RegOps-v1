@@ -31,7 +31,8 @@ function onOpen() {
   asegurarFormatoOperacionesCompensadas_(ss);
 
   ss.addMenu('RegOps v1', [
-    { name: 'Actualizar Mayor', functionName: 'actualizarMayorV1' }
+    { name: 'Actualizar Mayor', functionName: 'actualizarMayorV1' },
+    { name: 'Actualizar cuentas desde v2', functionName: 'actualizarEstructuraCuentasDesdeV2' }
   ]);
 
   actualizarMayorV1();
