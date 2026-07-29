@@ -40,6 +40,10 @@ function onOpen() {
 function prepararHojasRegOpsV1_(ss) {
   ss = ss || SpreadsheetApp.getActive();
 
+  if (ss.getName() !== 'RegOps v1') {
+    ss.rename('RegOps v1');
+  }
+
   var diario = ss.getSheetByName('Diario');
   var regOps = ss.getSheetByName('RegOps');
 
