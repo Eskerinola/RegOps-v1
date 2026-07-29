@@ -37,9 +37,6 @@ function actualizarMayorV1() {
   var filaMeses = nuevaFilaMayorV1_(ultimaColumna);
   filaMeses[0] = 'T/C Euro/USD';
   filaMeses[2] = tasaEuroUsd;
-  meses.forEach(function(mes, indice) {
-    filaMeses[3 + indice] = formatearMesMayorV1_(mes.valor);
-  });
   filas.push(filaMeses);
   tipos.push('meses');
 
@@ -53,6 +50,10 @@ function actualizarMayorV1() {
   encabezado[0] = 'Periodo';
   encabezado[1] = 'Acum (USD)';
   encabezado[2] = 'Acum histórico';
+  meses.forEach(function(mes, indice) {
+    var fechaMes = mes.valor instanceof Date ? mes.valor : new Date(mes.valor);
+    encabezado[3 + indice] = isNaN(fechaMes.getTime()) ? mes.valor : fechaMes;
+  });
   filas.push(encabezado);
   tipos.push('encabezado');
 
@@ -276,12 +277,19 @@ function formatearMesMayorV1_(valor) {
   return fecha.getFullYear() + '-' + nombres[fecha.getMonth()];
 }
 
+function obtenerAnioMayorV1_(valor) {
+  if (valor instanceof Date && !isNaN(valor.getTime())) return String(valor.getFullYear());
+  var texto = String(valor || '');
+  var coincidencia = texto.match(/\d{4}/);
+  return coincidencia ? coincidencia[0] : '';
+}
+
 function aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMeses) {
   var rango = mayor.getRange(1, 1, filas.length, ultimaColumna);
   rango.setFontFamily('Nunito').setFontSize(8).setVerticalAlignment('middle');
   mayor.setFrozenRows(6);
   mayor.setFrozenColumns(3);
-  mayor.setHiddenGridlines(true);
+  mayor.setHiddenGridlines(false);
 
   mayor.setColumnWidth(1, 270);
   mayor.setColumnWidth(2, 105);
@@ -293,6 +301,12 @@ function aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMese
   rango.setNumberFormat('#,##0;[Red](#,##0);-');
   mayor.getRange(2, 1, 2, 1).setNumberFormat('@');
   mayor.getRange(2, 3, 2, 1).setNumberFormat('0.00');
+  if (cantidadMeses > 0) {
+    mayor.getRange(4, 4, 1, cantidadMeses).setNumberFormat('yyyy-mm');
+  }
+  if (filas.length >= 5) {
+    mayor.getRange(5, 2, filas.length - 4, 1).setFontSize(10);
+  }
 
   var fondoAlterno = '#f7f7f7';
   for (var fila = 1; fila <= filas.length; fila++) {
@@ -326,8 +340,8 @@ function aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMese
 
   for (var col = 4; col <= ultimaColumna; col++) {
     if (col < ultimaColumna) {
-      var actual = String(filas[1][col - 1] || '').substring(0, 4);
-      var siguiente = String(filas[1][col] || '').substring(0, 4);
+      var actual = obtenerAnioMayorV1_(filas[3][col - 1]);
+      var siguiente = obtenerAnioMayorV1_(filas[3][col]);
       if (actual && siguiente && actual !== siguiente) {
         mayor.getRange(1, col, filas.length, 1)
           .setBorder(null, null, null, true, null, null, '#666666', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
