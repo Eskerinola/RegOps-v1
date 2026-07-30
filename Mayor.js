@@ -182,8 +182,10 @@ function actualizarMayorV1() {
       ? totalRetiros / cantidadMeses / 3
       : 0;
     filaRetiro[0] =
-      'Retiro total ' + formatearEnteroEtiquetaMayorV1_(totalRetiros) +
-      ' y promedio ' + formatearEnteroEtiquetaMayorV1_(promedioRetirosSocioMensual);
+      'Retiro total USDk ' + formatearEnteroEtiquetaMayorV1_(totalRetiros) +
+      ' y promedio USDk ' +
+      formatearEnteroEtiquetaMayorV1_(promedioRetirosSocioMensual) +
+      '/mes/persona';
     filas.push(filaRetiro);
     tipos.push('retiro');
   }
