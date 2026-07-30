@@ -161,7 +161,23 @@ function actualizarMayorV1() {
       cuentasRetiro,
       ultimaColumna
     );
-    var totalRetiros = Number(filaRetiro[1]) || 0;
+    // Convierte cada retiro mensual con la T/C correspondiente a ese
+    // período y recién después suma el total expresado en USDk.
+    var totalRetiros = cuentasRetiro.reduce(function(total, cuenta) {
+      return total + meses.reduce(function(subtotal, mes, indiceMes) {
+        var importePeriodo = Number(cuenta.fila[3 + indiceMes]) || 0;
+        var tasaArsPeriodo = Number(mes.tasa) || tasaArsActual;
+        return subtotal + convertirAcumuladoNativoAUsdMayorV1_(
+          importePeriodo,
+          cuenta.nombre,
+          tasaArsPeriodo,
+          tasaEuroUsd,
+          tasaBrlUsd
+        );
+      }, 0);
+    }, 0);
+    filaRetiro[1] = totalRetiros;
+
     var promedioRetirosSocioMensual = cantidadMeses > 0
       ? totalRetiros / cantidadMeses / 3
       : 0;
