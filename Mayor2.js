@@ -216,18 +216,25 @@ function actualizarMayor2V1() {
 
 function obtenerMesesMayor2V1_(diario) {
   var ultimaFila = diario.getLastRow();
-  var fechas = ultimaFila >= 6
-    ? diario.getRange(6, 1, ultimaFila - 5, 1).getValues()
-    : [];
   var mapa = {};
-  fechas.forEach(function(fila) {
-    var fecha = fila[0] instanceof Date ? fila[0] : new Date(fila[0]);
-    if (isNaN(fecha.getTime())) return;
-    var anio = fecha.getFullYear();
-    var mes = fecha.getMonth() + 1;
-    var clave = anio + '-' + (mes < 10 ? '0' : '') + mes;
-    mapa[clave] = {clave: clave, anio: anio, mes: mes};
-  });
+  var tamanoBloque = 3000;
+
+  // El Diario puede tener decenas de miles de movimientos. Leer la columna
+  // completa en una sola llamada supera el límite de tamaño de Apps Script.
+  for (var filaInicial = 6;
+    filaInicial <= ultimaFila;
+    filaInicial += tamanoBloque) {
+    var cantidad = Math.min(tamanoBloque, ultimaFila - filaInicial + 1);
+    var fechas = diario.getRange(filaInicial, 1, cantidad, 1).getValues();
+    fechas.forEach(function(fila) {
+      var fecha = fila[0] instanceof Date ? fila[0] : new Date(fila[0]);
+      if (isNaN(fecha.getTime())) return;
+      var anio = fecha.getFullYear();
+      var mes = fecha.getMonth() + 1;
+      var clave = anio + '-' + (mes < 10 ? '0' : '') + mes;
+      mapa[clave] = {clave: clave, anio: anio, mes: mes};
+    });
+  }
 
   // Recupera sólo los valores históricos de tasa existentes como valores iniciales.
   // Ninguna fórmula de Mayor2 queda vinculada a la tabla auxiliar.
