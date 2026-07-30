@@ -32,6 +32,7 @@ function onOpen() {
   // aunque alguna tarea posterior demore o falle.
   ss.addMenu('RegOps', [
     { name: 'Actualizar Mayor', functionName: 'actualizarMayorV1' },
+    { name: 'Activar timestamp para todos', functionName: 'instalarTimestampParaTodosV1' },
     { name: 'Limpiar formato del Diario', functionName: 'limpiarFormatoDiarioV1' },
     { name: 'Actualizar cuentas desde v2', functionName: 'actualizarEstructuraCuentasDesdeV2' },
     { name: 'Instalar modelo de cuentas por ID', functionName: 'instalarModeloRelacionalCuentasV1' }
@@ -293,41 +294,9 @@ function onEdit(e) {
     }
 
     // 5. Timestamp automático en Diario.
-    // Funciona tanto para una celda como para pegados de varias filas.
-    var primeraColumna = range.getColumn();
-    var ultimaColumna = primeraColumna + range.getNumColumns() - 1;
-    var incluyeColumnaIngreso =
-      primeraColumna <= CONFIG.TEXT_COLUMN &&
-      ultimaColumna >= CONFIG.TEXT_COLUMN;
-
-    if (sheetName === 'Diario' && incluyeColumnaIngreso) {
-      var primeraFila = Math.max(range.getRow(), 6);
-      var ultimaFila = range.getLastRow();
-
-      if (ultimaFila >= primeraFila) {
-        var cantidadFilas = ultimaFila - primeraFila + 1;
-        var nombres = sheet
-          .getRange(primeraFila, CONFIG.TEXT_COLUMN, cantidadFilas, 1)
-          .getDisplayValues();
-        var rangoTimestamps = sheet
-          .getRange(primeraFila, CONFIG.TIMESTAMP_COLUMN, cantidadFilas, 1);
-        var timestampsActuales = rangoTimestamps.getValues();
-        var ahora = new Date();
-
-        var timestampsNuevos = nombres.map(function(fila, indice) {
-          var nombre = String(fila[0] || '').trim();
-
-          if (nombre === '') return [''];
-          if (timestampsActuales[indice][0]) return [timestampsActuales[indice][0]];
-          return [ahora];
-        });
-
-        rangoTimestamps
-          .setValues(timestampsNuevos)
-          .setNumberFormat('yyyy-MM-dd HH:mm');
-      }
-
-    }
+    // El disparador simple cubre al propietario; el instalable permite
+    // escribir en A aunque la edición la haga otro usuario.
+    actualizarTimestampIngresoV1_(sheet, range);
 
     if (isMassEdit) return;
 
@@ -339,6 +308,77 @@ function onEdit(e) {
   } finally {
     lock.releaseLock();
   }
+}
+
+
+/**
+ * Escribe o borra el timestamp de A cuando se modifica "Ingresó" en B.
+ * Es idempotente: puede ser llamado por el disparador simple e instalable.
+ */
+function actualizarTimestampIngresoV1_(sheet, range) {
+  if (!sheet || sheet.getName() !== 'Diario') return;
+
+  var primeraColumna = range.getColumn();
+  var ultimaColumna = range.getLastColumn();
+  var incluyeColumnaIngreso =
+    primeraColumna <= CONFIG.TEXT_COLUMN &&
+    ultimaColumna >= CONFIG.TEXT_COLUMN;
+
+  if (!incluyeColumnaIngreso) return;
+
+  var primeraFila = Math.max(range.getRow(), 6);
+  var ultimaFila = range.getLastRow();
+  if (ultimaFila < primeraFila) return;
+
+  var cantidadFilas = ultimaFila - primeraFila + 1;
+  var nombres = sheet
+    .getRange(primeraFila, CONFIG.TEXT_COLUMN, cantidadFilas, 1)
+    .getDisplayValues();
+  var rangoTimestamps = sheet
+    .getRange(primeraFila, CONFIG.TIMESTAMP_COLUMN, cantidadFilas, 1);
+  var timestampsActuales = rangoTimestamps.getValues();
+  var ahora = new Date();
+
+  var timestampsNuevos = nombres.map(function(fila, indice) {
+    var nombre = String(fila[0] || '').trim();
+
+    if (nombre === '') return [''];
+    if (timestampsActuales[indice][0]) return [timestampsActuales[indice][0]];
+    return [ahora];
+  });
+
+  rangoTimestamps
+    .setValues(timestampsNuevos)
+    .setNumberFormat('yyyy-MM-dd HH:mm');
+}
+
+/**
+ * Handler del disparador instalable. Se ejecuta con los permisos
+ * del propietario que lo instala.
+ */
+function timestampOnEditRegOpsV1(e) {
+  if (!e || !e.range) return;
+  actualizarTimestampIngresoV1_(e.range.getSheet(), e.range);
+}
+
+/**
+ * Instala una sola vez el disparador autorizado para todos los editores.
+ */
+function instalarTimestampParaTodosV1() {
+  var ss = SpreadsheetApp.getActive();
+
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    if (trigger.getHandlerFunction() === 'timestampOnEditRegOpsV1') {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+
+  ScriptApp.newTrigger('timestampOnEditRegOpsV1')
+    .forSpreadsheet(ss)
+    .onEdit()
+    .create();
+
+  ss.toast('Timestamp activado para todos los usuarios.', 'RegOps', 5);
 }
 
 
