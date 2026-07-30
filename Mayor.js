@@ -237,6 +237,30 @@ function actualizarMayorV1() {
     tipos.push('cero');
   });
 
+  // Detalle de cuentas con Estado 2, ordenadas por deuda convertida
+  // a USD (columna B), de mayor a menor en valor absoluto.
+  var cuentasMorosas = cuentas
+    .filter(function(cuenta) { return cuenta.estado === 2; })
+    .sort(function(a, b) {
+      return Math.abs(Number(b.fila[1]) || 0) -
+        Math.abs(Number(a.fila[1]) || 0);
+    });
+
+  filas.push(nuevaFilaMayorV1_(ultimaColumna));
+  tipos.push('libre');
+
+  var tituloMorosos = filaTituloMayorV1_('MOROSOS', ultimaColumna);
+  tituloMorosos[1] = Number(filaMorosos[1]) || 0;
+  filas.push(tituloMorosos);
+  tipos.push('morososTitulo');
+
+  cuentasMorosas.forEach(function(cuenta) {
+    var filaMorosa = cuenta.fila.slice();
+    filaMorosa[0] = '\u00a0\u00a0' + cuenta.nombre;
+    filas.push(filaMorosa);
+    tipos.push('morosoCuenta');
+  });
+
   mayor.getRange(1, 1, mayor.getMaxRows(), mayor.getMaxColumns()).breakApart();
   mayor.clear();
   mayor.getRange(1, 1, filas.length, ultimaColumna).setValues(filas);
@@ -471,8 +495,9 @@ function aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMese
       rangoFila.setFontWeight('bold').setBackground('#ffffff');
     } else if (tipo === 'retiro') {
       rangoFila.setBackground('#cfe2f3');
-    } else if (tipo === 'morosos') {
+    } else if (tipo === 'morosos' || tipo === 'morososTitulo') {
       rangoFila.setBackground('#f4cccc');
+      if (tipo === 'morososTitulo') rangoFila.setFontWeight('bold');
     } else if (tipo === 'acubrir') {
       rangoFila.setBackground(
         Number(filas[indice][1]) > 0 ? '#d9ead3' : '#f4cccc'
