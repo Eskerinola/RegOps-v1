@@ -163,7 +163,15 @@ function limpiarFormatoDiarioV1() {
   var diario = ss.getSheetByName('Diario');
   if (!diario) throw new Error('No se encontró la hoja Diario.');
 
-  limpiarFondosGrisesNoCompensadosV1_(diario, 6, diario.getLastRow());
+  var primeraFila = 6;
+  var ultimaFila = diario.getLastRow();
+  var tamanoBloque = 1500;
+
+  for (var inicio = primeraFila; inicio <= ultimaFila; inicio += tamanoBloque) {
+    var fin = Math.min(inicio + tamanoBloque - 1, ultimaFila);
+    limpiarFondosGrisesNoCompensadosV1_(diario, inicio, fin);
+  }
+
   asegurarFormatoOperacionesCompensadas_(ss);
   SpreadsheetApp.flush();
   ss.toast('Formato del Diario corregido.', 'RegOps', 4);
