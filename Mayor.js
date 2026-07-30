@@ -111,7 +111,7 @@ function actualizarMayorV1() {
   tipos.push('anios');
 
   var encabezado = nuevaFilaMayorV1_(ultimaColumna);
-  encabezado[0] = 'Periodo';
+  encabezado[0] = '';
   encabezado[1] = 'Acum (USDk)';
   encabezado[2] = 'Acum (moneda)';
   meses.forEach(function(mes, indice) {
@@ -199,14 +199,12 @@ function actualizarMayorV1() {
   tipos.push('acubrir');
 
   var cuentasCero = cuentas.filter(function(cuenta) {
-    return !/^Retiro\b/i.test(cuenta.nombre) &&
-      Math.abs(Number(cuenta.fila[1]) || 0) < 0.5;
+    return Math.abs(Number(cuenta.fila[1]) || 0) < 0.5;
   });
 
   ['ACTIVO', 'PATRIMONIO', 'RESULTADO'].forEach(function(grupo) {
     var grupoCuentas = cuentas.filter(function(cuenta) {
       return cuenta.grupo === grupo &&
-        !/^Retiro\b/i.test(cuenta.nombre) &&
         Math.abs(Number(cuenta.fila[1]) || 0) >= 0.5;
     });
 
@@ -440,10 +438,10 @@ function aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMese
   mayor.setFrozenColumns(3);
   mayor.setHiddenGridlines(false);
 
-  mayor.setColumnWidth(1, 270);
-  mayor.setColumnWidth(2, 105);
-  mayor.setColumnWidth(3, 115);
-  if (cantidadMeses > 0) mayor.setColumnWidths(4, cantidadMeses, 88);
+  mayor.setColumnWidth(1, 240);
+  mayor.setColumnWidth(2, 85);
+  mayor.setColumnWidth(3, 100);
+  if (cantidadMeses > 0) mayor.setColumnWidths(4, cantidadMeses, 58);
 
   // Todos los importes sin decimales. Las tasas quedan en B1:B3;
   // Euro/USD y BRL/USD conservan dos decimales.
@@ -529,6 +527,27 @@ function aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMese
   }
   if (filaPatrimonio > 0) {
     mayor.getRange(filaPatrimonio, 3).setHorizontalAlignment('center');
+  }
+
+  // El total de MOROSOS enlaza con el detalle ubicado al final.
+  var filaMorososResumen = tipos.indexOf('morosos') + 1;
+  var filaMorososDetalle = tipos.indexOf('morososTitulo') + 1;
+  if (filaMorososResumen > 0 && filaMorososDetalle > 0) {
+    var textoTotalMorosos = formatearEnteroEtiquetaMayorV1_(
+      filas[filaMorososResumen - 1][1]
+    );
+    var estiloEnlace = SpreadsheetApp.newTextStyle()
+      .setForegroundColor('#1155cc')
+      .setUnderline(true)
+      .build();
+    var enlaceMorosos = SpreadsheetApp.newRichTextValue()
+      .setText(textoTotalMorosos)
+      .setLinkUrl(
+        '#gid=' + mayor.getSheetId() + '&range=A' + filaMorososDetalle
+      )
+      .setTextStyle(estiloEnlace)
+      .build();
+    mayor.getRange(filaMorososResumen, 2).setRichTextValue(enlaceMorosos);
   }
 
   // Combina horizontalmente los meses pertenecientes al mismo año.
