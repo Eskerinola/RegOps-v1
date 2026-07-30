@@ -17,11 +17,19 @@ function actualizarMayorV1() {
   var tasaEuroUsd = Number(diario.getRange('L1').getValue()) / tasaArsActual || 1;
   var tasaBrlUsd = 0.20;
 
-  var nombresPlan = definicion
-    .getRange(3, 1, Math.max(definicion.getLastRow() - 2, 1), 1)
-    .getDisplayValues()
-    .map(function(fila) { return String(fila[0] || '').trim(); })
-    .filter(function(nombre) { return nombre !== ''; });
+  var definicionesPlan = definicion
+    .getRange(3, 1, Math.max(definicion.getLastRow() - 2, 1), 4)
+    .getValues()
+    .map(function(fila) {
+      return {
+        nombre: String(fila[0] || '').trim(),
+        estado: Number(fila[3]) || 0
+      };
+    })
+    .filter(function(cuenta) { return cuenta.nombre !== ''; });
+  var nombresPlan = definicionesPlan.map(function(cuenta) {
+    return cuenta.nombre;
+  });
 
   var resumenFuente = diario.getRange(6, 11, 8, 2 + cantidadMeses).getValues();
   var cuentasFuente = diario
@@ -32,6 +40,7 @@ function actualizarMayorV1() {
     var nombre = String(origen[0] || nombresPlan[indice] || '').trim();
     return {
       nombre: nombre,
+      estado: definicionesPlan[indice] ? definicionesPlan[indice].estado : 0,
       grupo: grupoCuentaMayorV1_(nombre),
       fila: convertirCuentaMayorV1_(
         nombre,
@@ -154,6 +163,16 @@ function actualizarMayorV1() {
     filas.push(filaRetiro);
     tipos.push('retiro');
   }
+
+  var filaMorosos = nuevaFilaMayorV1_(ultimaColumna);
+  filaMorosos[0] = 'MOROSOS';
+  filaMorosos[1] = cuentas
+    .filter(function(cuenta) { return cuenta.estado === 2; })
+    .reduce(function(total, cuenta) {
+      return total + (Number(cuenta.fila[1]) || 0);
+    }, 0);
+  filas.push(filaMorosos);
+  tipos.push('morosos');
 
   var cuentasCero = cuentas.filter(function(cuenta) {
     return !/^Retiro\b/i.test(cuenta.nombre) &&
@@ -404,23 +423,36 @@ function aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMese
       rangoFila.setBackground('#666666').setFontColor('#ffffff')
         .setFontWeight('bold').setHorizontalAlignment('center');
     } else if (tipo === 'encabezado') {
-      rangoFila.setBackground('#424242').setFontColor('#ffffff')
+      rangoFila.setBackground('#666666').setFontColor('#ffffff')
         .setFontWeight('bold');
     } else if (tipo === 'patrimonio') {
-      rangoFila.setBackground('#424242').setFontColor('#ffffff')
+      rangoFila.setBackground('#ffffff').setFontColor('#000000')
         .setFontWeight('bold').setFontSize(10)
         .setBorder(null, null, true, null, null, null, '#b7b7b7', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
       mayor.getRange(fila, 3)
         .setFontWeight('normal')
         .setFontSize(8)
-        .setFontColor('#ffffff');
+        .setFontColor('#000000');
     } else if (tipo === 'titulo') {
       rangoFila.setFontWeight('bold').setBackground('#ffffff');
     } else if (tipo === 'retiro') {
       rangoFila.setBackground('#cfe2f3');
+    } else if (tipo === 'morosos') {
+      rangoFila.setBackground('#f4cccc');
     } else if (tipo === 'ceroTitulo' || tipo === 'cero') {
       rangoFila.setBackground('#d9ead3');
       if (tipo === 'ceroTitulo') rangoFila.setFontWeight('bold');
+    }
+  });
+
+  // Separadores finos dentro de CUENTAS AGRUPADAS:
+  // CJ / CC y CC / INV.
+  tipos.forEach(function(tipo, indice) {
+    if (tipo !== 'agrupada') return;
+    var nombre = String(filas[indice][0] || '').trim();
+    if (nombre === 'CJ USD' || nombre === 'CC USD') {
+      mayor.getRange(indice + 1, 1, 1, ultimaColumna)
+        .setBorder(null, null, true, null, null, null, '#000000', SpreadsheetApp.BorderStyle.SOLID);
     }
   });
 
