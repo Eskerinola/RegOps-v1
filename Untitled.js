@@ -205,24 +205,71 @@ function limpiarFondosGrisesNoCompensadosV1_(diario, primeraFila, ultimaFila) {
  * puede demorar y no debe bloquear la apertura de la planilla.
  */
 function limpiarFormatoDiarioV1() {
-  var ss = SpreadsheetApp.getActive();
-  var diario = ss.getSheetByName('Diario');
-  if (!diario) throw new Error('No se encontró la hoja Diario.');
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return;
 
-  var primeraFila = 6;
-  var ultimaFila = diario.getLastRow();
-  var tamanoBloque = 1500;
+  try {
+    var ss = SpreadsheetApp.getActive();
+    var diario = ss.getSheetByName('Diario');
+    if (!diario) throw new Error('No se encontró la hoja Diario.');
 
-  for (var inicio = primeraFila; inicio <= ultimaFila; inicio += tamanoBloque) {
-    var fin = Math.min(inicio + tamanoBloque - 1, ultimaFila);
-    limpiarFondosGrisesNoCompensadosV1_(diario, inicio, fin);
+    var propiedades = PropertiesService.getDocumentProperties();
+    var claveProximaFila = 'REGOPS_LIMPIEZA_PROXIMA_FILA';
+    var ultimaFila = diario.getLastRow();
+    var proximaFila = Number(propiedades.getProperty(claveProximaFila)) || ultimaFila;
+    var tamanoBloque = 500;
+    var limiteTiempo = Date.now() + 240000;
+
+    // Se procesa desde abajo hacia arriba para corregir primero
+    // los movimientos más recientes.
+    while (proximaFila >= 6 && Date.now() < limiteTiempo) {
+      var primeraFilaBloque = Math.max(6, proximaFila - tamanoBloque + 1);
+      limpiarFondosGrisesNoCompensadosV1_(
+        diario,
+        primeraFilaBloque,
+        proximaFila
+      );
+
+      proximaFila = primeraFilaBloque - 1;
+      propiedades.setProperty(claveProximaFila, String(proximaFila));
+    }
+
+    SpreadsheetApp.flush();
+
+    if (proximaFila < 6) {
+      propiedades.deleteProperty(claveProximaFila);
+      eliminarContinuacionesLimpiezaDiarioV1_();
+      asegurarFormatoOperacionesCompensadas_(ss);
+      ss.toast('Formato del Diario corregido completamente.', 'RegOps', 5);
+    } else {
+      programarContinuacionLimpiezaDiarioV1_();
+      ss.toast(
+        'Limpieza en curso. Continuará automáticamente.',
+        'RegOps',
+        5
+      );
+    }
+  } finally {
+    lock.releaseLock();
   }
-
-  asegurarFormatoOperacionesCompensadas_(ss);
-  SpreadsheetApp.flush();
-  ss.toast('Formato del Diario corregido.', 'RegOps', 4);
 }
 
+function programarContinuacionLimpiezaDiarioV1_() {
+  eliminarContinuacionesLimpiezaDiarioV1_();
+
+  ScriptApp.newTrigger('limpiarFormatoDiarioV1')
+    .timeBased()
+    .after(60000)
+    .create();
+}
+
+function eliminarContinuacionesLimpiezaDiarioV1_() {
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    if (trigger.getHandlerFunction() === 'limpiarFormatoDiarioV1') {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+}
 
 function instalarFormatoOperacionesCompensadas() {
   asegurarFormatoOperacionesCompensadas_(SpreadsheetApp.getActive());
