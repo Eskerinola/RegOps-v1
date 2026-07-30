@@ -75,7 +75,7 @@ function actualizarMayorV1() {
 
   var filaMeses = nuevaFilaMayorV1_(ultimaColumna);
   filaMeses[0] = 'T/C Euro/USD';
-  filaMeses[2] = Number(diario.getRange('L1').getValue()) || 0;
+  filaMeses[2] = tasaEuroUsd;
   filas.push(filaMeses);
   tipos.push('meses');
 
@@ -88,7 +88,7 @@ function actualizarMayorV1() {
   var encabezado = nuevaFilaMayorV1_(ultimaColumna);
   encabezado[0] = 'Periodo';
   encabezado[1] = 'Acum (USD)';
-  encabezado[2] = 'Acum histórico';
+  encabezado[2] = 'Acum (moneda)';
   meses.forEach(function(mes, indice) {
     var fechaMes = mes.valor instanceof Date ? mes.valor : new Date(mes.valor);
     encabezado[3 + indice] = isNaN(fechaMes.getTime()) ? mes.valor : fechaMes;
@@ -233,28 +233,28 @@ function convertirFilaFuenteMayorV1_(nombre, origen, cantidadMeses, ultimaColumn
 function convertirCuentaMayorV1_(nombre, origen, meses, ultimaColumna, tasaArsActual, tasaEuroUsd, tasaBrlUsd) {
   var fila = nuevaFilaMayorV1_(ultimaColumna);
   fila[0] = nombre;
-  fila[1] = convertirMonedaMayorV1_(
-    Number(origen[1]) || 0,
+
+  // Desde D en adelante se muestran los movimientos mensuales en miles
+  // de la moneda propia de cada cuenta, sin aplicar tasas históricas.
+  for (var i = 0; i < meses.length; i++) {
+    var indiceFuente = 2 + meses.length - 1 - i;
+    fila[3 + i] = (Number(origen[indiceFuente]) || 0) / 1000;
+  }
+
+  // C es la suma de todos los períodos, también en la moneda de la cuenta.
+  fila[2] = fila.slice(3).reduce(function(total, valor) {
+    return total + (Number(valor) || 0);
+  }, 0);
+
+  // B convierte el acumulado de C a miles de USD con la tasa vigente:
+  // EUR/USD de C2, BRL/USD de C3 y ARS/USD de C5.
+  fila[1] = convertirAcumuladoNativoAUsdMayorV1_(
+    fila[2],
     nombre,
     tasaArsActual,
     tasaEuroUsd,
     tasaBrlUsd
   );
-
-  for (var i = 0; i < meses.length; i++) {
-    var indiceFuente = 2 + meses.length - 1 - i;
-    fila[3 + i] = convertirMonedaMayorV1_(
-      Number(origen[indiceFuente]) || 0,
-      nombre,
-      Number(meses[i].tasa) || tasaArsActual,
-      tasaEuroUsd,
-      tasaBrlUsd
-    );
-  }
-
-  fila[2] = fila.slice(3).reduce(function(total, valor) {
-    return total + (Number(valor) || 0);
-  }, 0);
 
   return fila;
 }
@@ -272,13 +272,13 @@ function acumularCuentasMayorV1_(nombre, cuentas, ultimaColumna) {
   return fila;
 }
 
-function convertirMonedaMayorV1_(importe, nombre, tasaArsUsd, tasaEuroUsd, tasaBrlUsd) {
+function convertirAcumuladoNativoAUsdMayorV1_(acumuladoNativo, nombre, tasaArsUsd, tasaEuroUsd, tasaBrlUsd) {
   var cuenta = String(nombre || '').toUpperCase();
 
-  if (/\bARS\b/.test(cuenta)) return importe / tasaArsUsd / 1000;
-  if (/\bEURO\b|\bEUR\b/.test(cuenta)) return importe * tasaEuroUsd / 1000;
-  if (/\bBRL\b|\bREAL(?:ES)?\b/.test(cuenta)) return importe * tasaBrlUsd / 1000;
-  return importe / 1000;
+  if (/\bARS\b/.test(cuenta)) return acumuladoNativo / tasaArsUsd;
+  if (/\bEURO\b|\bEUR\b/.test(cuenta)) return acumuladoNativo * tasaEuroUsd;
+  if (/\bBRL\b|\bREAL(?:ES)?\b/.test(cuenta)) return acumuladoNativo * tasaBrlUsd;
+  return acumuladoNativo;
 }
 
 function nuevaFilaMayorV1_(cantidadColumnas) {
