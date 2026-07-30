@@ -172,13 +172,24 @@ function limpiarFondosGrisesNoCompensadosV1_(diario, primeraFila, ultimaFila) {
       montoF !== '' && montoF !== null &&
       Math.abs(Number(montoD) + Number(montoF)) < 0.01;
 
-    if (compensa) continue;
+    if (compensa) {
+      // Aplicación directa: evita que listas desplegables o formatos manuales
+      // dejen algunas celdas blancas dentro de una fila compensada.
+      for (var col = 0; col < 7; col++) {
+        fondos[i][col] = '#f7f7f7';
+        coloresTexto[i][col] = '#8a8a8a';
+      }
 
-    // Toda fila no compensada debe verse normal: fondo blanco y texto negro.
-    for (var col = 0; col < 7; col++) {
-      fondos[i][col] = '#ffffff';
-      coloresTexto[i][col] = '#000000';
+      if (Number(montoD) < 0) coloresTexto[i][3] = '#c27a7a';
+      if (Number(montoF) < 0) coloresTexto[i][5] = '#c27a7a';
+    } else {
+      // Toda fila no compensada debe verse normal: fondo blanco y texto negro.
+      for (var col = 0; col < 7; col++) {
+        fondos[i][col] = '#ffffff';
+        coloresTexto[i][col] = '#000000';
+      }
     }
+
     huboCambios = true;
   }
 
