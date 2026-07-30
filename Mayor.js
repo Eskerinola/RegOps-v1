@@ -73,28 +73,17 @@ function actualizarMayorV1() {
   filas.push(nuevaFilaMayorV1_(ultimaColumna));
   tipos.push('libre');
 
-  var filaMeses = nuevaFilaMayorV1_(ultimaColumna);
-  filaMeses[0] = 'T/C Euro/USD';
-  filaMeses[2] = tasaEuroUsd;
-  filas.push(filaMeses);
-  tipos.push('meses');
+  var filaEuro = nuevaFilaMayorV1_(ultimaColumna);
+  filaEuro[0] = 'T/C Euro/USD';
+  filaEuro[2] = tasaEuroUsd;
+  filas.push(filaEuro);
+  tipos.push('tasa');
 
   var filaBrl = nuevaFilaMayorV1_(ultimaColumna);
   filaBrl[0] = 'T/C BRL/USD';
   filaBrl[2] = tasaBrlUsd;
   filas.push(filaBrl);
   tipos.push('tasa');
-
-  var encabezado = nuevaFilaMayorV1_(ultimaColumna);
-  encabezado[0] = 'Periodo';
-  encabezado[1] = 'Acum (USDk)';
-  encabezado[2] = 'Acum (moneda)';
-  meses.forEach(function(mes, indice) {
-    var fechaMes = mes.valor instanceof Date ? mes.valor : new Date(mes.valor);
-    encabezado[3 + indice] = isNaN(fechaMes.getTime()) ? mes.valor : fechaMes;
-  });
-  filas.push(encabezado);
-  tipos.push('encabezado');
 
   var tasasArs = nuevaFilaMayorV1_(ultimaColumna);
   tasasArs[0] = 'T/C ARS/USD';
@@ -104,6 +93,29 @@ function actualizarMayorV1() {
   });
   filas.push(tasasArs);
   tipos.push('tasa');
+
+  var filaAnios = nuevaFilaMayorV1_(ultimaColumna);
+  meses.forEach(function(mes, indice) {
+    var fechaMes = mes.valor instanceof Date ? mes.valor : new Date(mes.valor);
+    filaAnios[3 + indice] = isNaN(fechaMes.getTime())
+      ? obtenerAnioMayorV1_(mes.valor)
+      : fechaMes.getFullYear();
+  });
+  filas.push(filaAnios);
+  tipos.push('anios');
+
+  var encabezado = nuevaFilaMayorV1_(ultimaColumna);
+  encabezado[0] = 'Periodo';
+  encabezado[1] = 'Acum (USDk)';
+  encabezado[2] = 'Acum (moneda)';
+  meses.forEach(function(mes, indice) {
+    var fechaMes = mes.valor instanceof Date ? mes.valor : new Date(mes.valor);
+    encabezado[3 + indice] = isNaN(fechaMes.getTime())
+      ? mes.valor
+      : fechaMes.getMonth() + 1;
+  });
+  filas.push(encabezado);
+  tipos.push('encabezado');
 
   var filaPatrimonio = nuevaFilaMayorV1_(ultimaColumna);
   filaPatrimonio[0] = 'Patrimonio Neto (USD)';
@@ -185,6 +197,7 @@ function actualizarMayorV1() {
     tipos.push('cero');
   });
 
+  mayor.getRange(1, 1, mayor.getMaxRows(), mayor.getMaxColumns()).breakApart();
   mayor.clear();
   mayor.getRange(1, 1, filas.length, ultimaColumna).setValues(filas);
   aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMeses);
@@ -332,37 +345,39 @@ function obtenerAnioMayorV1_(valor) {
 
 function aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMeses) {
   var rango = mayor.getRange(1, 1, filas.length, ultimaColumna);
+  var filaAnios = tipos.indexOf('anios') + 1;
+  var filaEncabezado = tipos.indexOf('encabezado') + 1;
+  var filaPatrimonio = tipos.indexOf('patrimonio') + 1;
+
   rango.setFontFamily('Nunito').setFontSize(8).setVerticalAlignment('middle');
-  mayor.setFrozenRows(6);
+  mayor.setFrozenRows(filaPatrimonio);
   mayor.setFrozenColumns(3);
   mayor.setHiddenGridlines(false);
 
   mayor.setColumnWidth(1, 270);
   mayor.setColumnWidth(2, 105);
   mayor.setColumnWidth(3, 115);
-  if (cantidadMeses > 0) {
-    mayor.setColumnWidths(4, cantidadMeses, 88);
-  }
+  if (cantidadMeses > 0) mayor.setColumnWidths(4, cantidadMeses, 88);
 
-  // Formato estilo calculadora: coma para miles y punto para decimales.
-  rango.setNumberFormat('#,##0.00;[Red](#,##0.00);-');
-  mayor.getRange(1, 2, filas.length, 1)
-    .setNumberFormat('#,##0;[Red](#,##0);-');
-  mayor.getRange(2, 1, 2, 1).setNumberFormat('@');
+  // Todos los importes sin decimales. Solamente C2 y C3 conservan dos.
+  rango.setNumberFormat('#,##0;[Red](#,##0);-');
+  mayor.getRange(2, 1, 3, 1).setNumberFormat('@');
   mayor.getRange(2, 3).setNumberFormat('0.00');
   mayor.getRange(3, 3).setNumberFormat('0.00');
-  mayor.getRange(5, 3, 1, Math.max(ultimaColumna - 2, 1))
-    .setNumberFormat('#,##0.00');
-  if (cantidadMeses > 0) {
-    mayor.getRange(4, 4, 1, cantidadMeses).setNumberFormat('yyyy-mm');
-  }
-  if (filas.length >= 5) {
-    mayor.getRange(5, 2, filas.length - 4, 1).setFontSize(10);
+
+  if (filaPatrimonio > 0 && filas.length >= filaPatrimonio) {
+    mayor.getRange(filaPatrimonio, 2, filas.length - filaPatrimonio + 1, 1)
+      .setFontSize(10);
   }
 
   var fondoAlterno = '#f7f7f7';
   for (var fila = 1; fila <= filas.length; fila++) {
-    if (fila % 2 === 0 && tipos[fila - 1] !== 'titulo' && tipos[fila - 1] !== 'ceroTitulo') {
+    var tipoFila = tipos[fila - 1];
+    if (fila % 2 === 0 &&
+        tipoFila !== 'titulo' &&
+        tipoFila !== 'ceroTitulo' &&
+        tipoFila !== 'anios' &&
+        tipoFila !== 'encabezado') {
       mayor.getRange(fila, 1, 1, ultimaColumna).setBackground(fondoAlterno);
     }
   }
@@ -371,8 +386,12 @@ function aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMese
     var fila = indice + 1;
     var rangoFila = mayor.getRange(fila, 1, 1, ultimaColumna);
 
-    if (tipo === 'encabezado') {
-      rangoFila.setBackground('#424242').setFontColor('#ffffff').setFontWeight('bold');
+    if (tipo === 'anios') {
+      rangoFila.setBackground('#666666').setFontColor('#ffffff')
+        .setFontWeight('bold').setHorizontalAlignment('center');
+    } else if (tipo === 'encabezado') {
+      rangoFila.setBackground('#424242').setFontColor('#ffffff')
+        .setFontWeight('bold');
     } else if (tipo === 'patrimonio') {
       rangoFila.setFontWeight('bold').setFontSize(10)
         .setBorder(null, null, true, null, null, null, '#b7b7b7', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
@@ -388,16 +407,39 @@ function aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMese
 
   mayor.getRange(1, 2, filas.length, ultimaColumna - 1).setHorizontalAlignment('right');
   mayor.getRange(1, 1, filas.length, 1).setHorizontalAlignment('left');
-  mayor.getRange(4, 1, 1, ultimaColumna).setHorizontalAlignment('center');
 
-  for (var col = 4; col <= ultimaColumna; col++) {
-    if (col < ultimaColumna) {
-      var actual = obtenerAnioMayorV1_(filas[3][col - 1]);
-      var siguiente = obtenerAnioMayorV1_(filas[3][col]);
-      if (actual && siguiente && actual !== siguiente) {
-        mayor.getRange(1, col, filas.length, 1)
+  if (filaEncabezado > 0) {
+    mayor.getRange(filaEncabezado, 1, 1, ultimaColumna).setHorizontalAlignment('center');
+    mayor.getRange(filaEncabezado, 1).setHorizontalAlignment('left');
+  }
+
+  // Combina horizontalmente los meses pertenecientes al mismo año.
+  if (filaAnios > 0 && cantidadMeses > 0) {
+    var valoresAnios = filas[filaAnios - 1].slice(3);
+    var inicioGrupo = 0;
+
+    while (inicioGrupo < valoresAnios.length) {
+      var anio = String(valoresAnios[inicioGrupo] || '');
+      var finGrupo = inicioGrupo;
+
+      while (
+        finGrupo + 1 < valoresAnios.length &&
+        String(valoresAnios[finGrupo + 1] || '') === anio
+      ) {
+        finGrupo++;
+      }
+
+      var cantidadGrupo = finGrupo - inicioGrupo + 1;
+      var rangoAnio = mayor.getRange(filaAnios, 4 + inicioGrupo, 1, cantidadGrupo);
+      if (cantidadGrupo > 1) rangoAnio.merge();
+      rangoAnio.setValue(anio).setHorizontalAlignment('center');
+
+      if (finGrupo < valoresAnios.length - 1) {
+        mayor.getRange(1, 4 + finGrupo, filas.length, 1)
           .setBorder(null, null, null, true, null, null, '#666666', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
       }
+
+      inicioGrupo = finGrupo + 1;
     }
   }
 }
