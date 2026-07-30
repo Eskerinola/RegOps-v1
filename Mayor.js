@@ -81,19 +81,19 @@ function actualizarMayorV1() {
 
   var filaEuro = nuevaFilaMayorV1_(ultimaColumna);
   filaEuro[0] = 'T/C Euro/USD';
-  filaEuro[2] = tasaEuroUsd;
+  filaEuro[1] = tasaEuroUsd;
   filas.push(filaEuro);
   tipos.push('tasa');
 
   var filaBrl = nuevaFilaMayorV1_(ultimaColumna);
   filaBrl[0] = 'T/C BRL/USD';
-  filaBrl[2] = tasaBrlUsd;
+  filaBrl[1] = tasaBrlUsd;
   filas.push(filaBrl);
   tipos.push('tasa');
 
   var tasasArs = nuevaFilaMayorV1_(ultimaColumna);
   tasasArs[0] = 'T/C ARS/USD';
-  tasasArs[2] = tasaArsActual;
+  tasasArs[1] = tasaArsActual;
   meses.forEach(function(mes, indice) {
     tasasArs[3 + indice] = mes.tasa;
   });
@@ -125,9 +125,10 @@ function actualizarMayorV1() {
 
   var filaPatrimonio = nuevaFilaMayorV1_(ultimaColumna);
   filaPatrimonio[0] = 'PATRIMONIO NETO';
-  filaPatrimonio[1] = resumenes.reduce(function(total, fila) {
+  var patrimonioNetoUsd = resumenes.reduce(function(total, fila) {
     return total + (Number(fila[1]) || 0);
   }, 0);
+  filaPatrimonio[1] = patrimonioNetoUsd;
   filaPatrimonio[2] = 'Result (USDk)';
   meses.forEach(function(mes, indice) {
     filaPatrimonio[3 + indice] = Number(mes.patrimonio) || 0;
@@ -156,10 +157,15 @@ function actualizarMayorV1() {
   });
   if (cuentasRetiro.length) {
     var filaRetiro = acumularCuentasMayorV1_(
-      'Retiros ARS (USD) en ' + cantidadMeses + ' meses',
+      '',
       cuentasRetiro,
       ultimaColumna
     );
+    var totalRetiros = Number(filaRetiro[1]) || 0;
+    var promedioRetirosSocio = totalRetiros / 3;
+    filaRetiro[0] =
+      'Retiros total USD ' + formatearEnteroEtiquetaMayorV1_(totalRetiros) +
+      ' y promedio ' + formatearEnteroEtiquetaMayorV1_(promedioRetirosSocio);
     filas.push(filaRetiro);
     tipos.push('retiro');
   }
@@ -173,6 +179,22 @@ function actualizarMayorV1() {
     }, 0);
   filas.push(filaMorosos);
   tipos.push('morosos');
+
+  function valorResumenColumnaB_(nombre) {
+    var fila = resumenes.filter(function(resumen) {
+      return String(resumen[0] || '').trim() === nombre;
+    })[0];
+    return fila ? (Number(fila[1]) || 0) : 0;
+  }
+
+  var filaACubrir = nuevaFilaMayorV1_(ultimaColumna);
+  filaACubrir[0] = 'A CUBRIR';
+  filaACubrir[1] =
+    valorResumenColumnaB_('INV USD (terceros)') -
+    valorResumenColumnaB_('INVP USD (TT)') +
+    patrimonioNetoUsd;
+  filas.push(filaACubrir);
+  tipos.push('acubrir');
 
   var cuentasCero = cuentas.filter(function(cuenta) {
     return !/^Retiro\b/i.test(cuenta.nombre) &&
@@ -368,6 +390,12 @@ function abreviarMesMayorV1_(valor) {
   return texto;
 }
 
+function formatearEnteroEtiquetaMayorV1_(valor) {
+  var numero = Math.round(Number(valor) || 0);
+  var signo = numero < 0 ? '-' : '';
+  return signo + String(Math.abs(numero)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
 function obtenerAnioMayorV1_(valor) {
   if (valor instanceof Date && !isNaN(valor.getTime())) return String(valor.getFullYear());
   var texto = String(valor || '');
@@ -391,12 +419,16 @@ function aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMese
   mayor.setColumnWidth(3, 115);
   if (cantidadMeses > 0) mayor.setColumnWidths(4, cantidadMeses, 88);
 
-  // Todos los importes sin decimales. Al eliminar la fila vacía,
-  // las tasas Euro/USD y BRL/USD quedan en C1 y C2.
+  // Todos los importes sin decimales. Las tasas quedan en B1:B3;
+  // Euro/USD y BRL/USD conservan dos decimales.
   rango.setNumberFormat('#,##0;[Red](#,##0);-');
   mayor.getRange(1, 1, 3, 1).setNumberFormat('@');
-  mayor.getRange(1, 3).setNumberFormat('0.00');
-  mayor.getRange(2, 3).setNumberFormat('0.00');
+  mayor.getRange(1, 2).setNumberFormat('0.00');
+  mayor.getRange(2, 2).setNumberFormat('0.00');
+
+  if (filaAnios > 0) {
+    mayor.getRange(filaAnios, 1, 2, ultimaColumna).setFontSize(10);
+  }
 
   if (filaPatrimonio > 0 && filas.length >= filaPatrimonio) {
     mayor.getRange(filaPatrimonio, 2, filas.length - filaPatrimonio + 1, 1)
@@ -439,6 +471,10 @@ function aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMese
       rangoFila.setBackground('#cfe2f3');
     } else if (tipo === 'morosos') {
       rangoFila.setBackground('#f4cccc');
+    } else if (tipo === 'acubrir') {
+      rangoFila.setBackground(
+        Number(filas[indice][1]) > 0 ? '#d9ead3' : '#f4cccc'
+      );
     } else if (tipo === 'ceroTitulo' || tipo === 'cero') {
       rangoFila.setBackground('#d9ead3');
       if (tipo === 'ceroTitulo') rangoFila.setFontWeight('bold');
@@ -462,6 +498,9 @@ function aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMese
   if (filaEncabezado > 0) {
     mayor.getRange(filaEncabezado, 1, 1, ultimaColumna).setHorizontalAlignment('center');
     mayor.getRange(filaEncabezado, 1).setHorizontalAlignment('left');
+  }
+  if (filaPatrimonio > 0) {
+    mayor.getRange(filaPatrimonio, 3).setHorizontalAlignment('center');
   }
 
   // Combina horizontalmente los meses pertenecientes al mismo año.
