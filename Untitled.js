@@ -86,19 +86,27 @@ function asegurarFormatoOperacionesCompensadas_(ss) {
   if (!diario) return;
 
   var formula = '=AND($D6<>"";$F6<>"";ABS($D6+$F6)<0,01)';
+  var formulaNegativoD = '=AND($D6<>"";$F6<>"";ABS($D6+$F6)<0,01;D6<0)';
+  var formulaNegativoF = '=AND($D6<>"";$F6<>"";ABS($D6+$F6)<0,01;F6<0)';
+  var formulasRegOps = {};
+  formulasRegOps[formula] = true;
+  formulasRegOps[formulaNegativoD] = true;
+  formulasRegOps[formulaNegativoF] = true;
+
   var reglas = diario.getConditionalFormatRules().filter(function(regla) {
     try {
       var condicion = regla.getBooleanCondition();
       if (!condicion) return true;
 
       var valores = condicion.getCriteriaValues();
-      return !(valores && String(valores[0]) === formula);
+      return !(valores && formulasRegOps[String(valores[0])]);
     } catch (err) {
       return true;
     }
   });
 
-  var rango = diario.getRange(6, 1, diario.getMaxRows() - 5, 7);
+  var cantidadFilas = diario.getMaxRows() - 5;
+  var rango = diario.getRange(6, 1, cantidadFilas, 7);
   var reglaCompensada = SpreadsheetApp.newConditionalFormatRule()
     .whenFormulaSatisfied(formula)
     .setFontColor('#8a8a8a')
@@ -106,7 +114,21 @@ function asegurarFormatoOperacionesCompensadas_(ss) {
     .setRanges([rango])
     .build();
 
+  var reglaNegativoD = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(formulaNegativoD)
+    .setFontColor('#c27a7a')
+    .setRanges([diario.getRange(6, 4, cantidadFilas, 1)])
+    .build();
+
+  var reglaNegativoF = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied(formulaNegativoF)
+    .setFontColor('#c27a7a')
+    .setRanges([diario.getRange(6, 6, cantidadFilas, 1)])
+    .build();
+
   reglas.push(reglaCompensada);
+  reglas.push(reglaNegativoD);
+  reglas.push(reglaNegativoF);
   diario.setConditionalFormatRules(reglas);
 
   // La limpieza completa se ejecuta desde el menú para no demorar onOpen.
