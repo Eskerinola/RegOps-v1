@@ -87,7 +87,7 @@ function actualizarMayorV1() {
 
   var encabezado = nuevaFilaMayorV1_(ultimaColumna);
   encabezado[0] = 'Periodo';
-  encabezado[1] = 'Acum (USD)';
+  encabezado[1] = 'Acum (USDk)';
   encabezado[2] = 'Acum (moneda)';
   meses.forEach(function(mes, indice) {
     var fechaMes = mes.valor instanceof Date ? mes.valor : new Date(mes.valor);
@@ -274,11 +274,19 @@ function acumularCuentasMayorV1_(nombre, cuentas, ultimaColumna) {
 
 function convertirAcumuladoNativoAUsdMayorV1_(acumuladoNativo, nombre, tasaArsUsd, tasaEuroUsd, tasaBrlUsd) {
   var cuenta = String(nombre || '').toUpperCase();
+  var importeUsd;
 
-  if (/\bARS\b/.test(cuenta)) return acumuladoNativo / tasaArsUsd;
-  if (/\bEURO\b|\bEUR\b/.test(cuenta)) return acumuladoNativo * tasaEuroUsd;
-  if (/\bBRL\b|\bREAL(?:ES)?\b/.test(cuenta)) return acumuladoNativo * tasaBrlUsd;
-  return acumuladoNativo;
+  if (/\bARS\b/.test(cuenta)) {
+    importeUsd = acumuladoNativo / tasaArsUsd;
+  } else if (/\bEURO\b|\bEUR\b/.test(cuenta)) {
+    importeUsd = acumuladoNativo * tasaEuroUsd;
+  } else if (/\bBRL\b|\bREAL(?:ES)?\b/.test(cuenta)) {
+    importeUsd = acumuladoNativo * tasaBrlUsd;
+  } else {
+    importeUsd = acumuladoNativo;
+  }
+
+  return importeUsd / 1000;
 }
 
 function nuevaFilaMayorV1_(cantidadColumnas) {
@@ -338,6 +346,8 @@ function aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMese
 
   // Formato estilo calculadora: coma para miles y punto para decimales.
   rango.setNumberFormat('#,##0.00;[Red](#,##0.00);-');
+  mayor.getRange(1, 2, filas.length, 1)
+    .setNumberFormat('#,##0;[Red](#,##0);-');
   mayor.getRange(2, 1, 2, 1).setNumberFormat('@');
   mayor.getRange(2, 3).setNumberFormat('0.00');
   mayor.getRange(3, 3).setNumberFormat('0.00');
