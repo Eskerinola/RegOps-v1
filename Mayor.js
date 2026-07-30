@@ -162,10 +162,12 @@ function actualizarMayorV1() {
       ultimaColumna
     );
     var totalRetiros = Number(filaRetiro[1]) || 0;
-    var promedioRetirosSocio = totalRetiros / 3;
+    var promedioRetirosMensual = cantidadMeses > 0
+      ? totalRetiros / cantidadMeses
+      : 0;
     filaRetiro[0] =
       'Retiros total USD ' + formatearEnteroEtiquetaMayorV1_(totalRetiros) +
-      ' y promedio ' + formatearEnteroEtiquetaMayorV1_(promedioRetirosSocio);
+      ' y promedio ' + formatearEnteroEtiquetaMayorV1_(promedioRetirosMensual);
     filas.push(filaRetiro);
     tipos.push('retiro');
   }
@@ -188,11 +190,11 @@ function actualizarMayorV1() {
   }
 
   var filaACubrir = nuevaFilaMayorV1_(ultimaColumna);
-  filaACubrir[0] = 'A CUBRIR';
   filaACubrir[1] =
     valorResumenColumnaB_('INV USD (terceros)') -
     valorResumenColumnaB_('INVP USD (TT)') +
     patrimonioNetoUsd;
+  filaACubrir[0] = filaACubrir[1] > 0 ? 'EXCEDENTE' : 'A CUBRIR';
   filas.push(filaACubrir);
   tipos.push('acubrir');
 
@@ -498,6 +500,7 @@ function aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMese
   if (filaEncabezado > 0) {
     mayor.getRange(filaEncabezado, 1, 1, ultimaColumna).setHorizontalAlignment('center');
     mayor.getRange(filaEncabezado, 1).setHorizontalAlignment('left');
+    mayor.getRange(filaEncabezado, 3).setFontWeight('normal');
   }
   if (filaPatrimonio > 0) {
     mayor.getRange(filaPatrimonio, 3).setHorizontalAlignment('center');
