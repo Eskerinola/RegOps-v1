@@ -39,12 +39,34 @@ function onOpen() {
   ]);
 
   prepararHojasRegOpsV1_(ss);
+  configurarSeparadoresNumericosV1_(ss);
   asegurarFormatoOperacionesCompensadas_(ss);
   asegurarModeloRelacionalCuentasV1_(ss);
   actualizarMayorV1();
 
   var diario = ss.getSheetByName('Diario');
   if (diario) ss.setActiveSheet(diario);
+}
+
+/**
+ * Usa formato internacional tipo calculadora en todo el archivo:
+ * coma para miles y punto para decimales.
+ */
+function configurarSeparadoresNumericosV1_(ss) {
+  ss = ss || SpreadsheetApp.getActive();
+
+  if (ss.getSpreadsheetLocale() !== 'en_US') {
+    ss.setSpreadsheetLocale('en_US');
+  }
+
+  var diario = ss.getSheetByName('Diario');
+  if (diario && diario.getMaxRows() >= 6) {
+    var cantidadFilas = diario.getMaxRows() - 5;
+    diario.getRange(6, 4, cantidadFilas, 1)
+      .setNumberFormat('#,##0.##;[Red](#,##0.##);-');
+    diario.getRange(6, 6, cantidadFilas, 1)
+      .setNumberFormat('#,##0.##;[Red](#,##0.##);-');
+  }
 }
 
 /**
@@ -86,9 +108,9 @@ function asegurarFormatoOperacionesCompensadas_(ss) {
   var diario = ss.getSheetByName('Diario');
   if (!diario) return;
 
-  var formula = '=AND($D6<>"";$F6<>"";ABS($D6+$F6)<0,01)';
-  var formulaNegativoD = '=AND($D6<>"";$F6<>"";ABS($D6+$F6)<0,01;D6<0)';
-  var formulaNegativoF = '=AND($D6<>"";$F6<>"";ABS($D6+$F6)<0,01;F6<0)';
+  var formula = '=AND($D6<>"",$F6<>"",ABS($D6+$F6)<0.01)';
+  var formulaNegativoD = '=AND($D6<>"",$F6<>"",ABS($D6+$F6)<0.01,D6<0)';
+  var formulaNegativoF = '=AND($D6<>"",$F6<>"",ABS($D6+$F6)<0.01,F6<0)';
   var formulasRegOps = {};
   formulasRegOps[formula] = true;
   formulasRegOps[formulaNegativoD] = true;
@@ -127,9 +149,9 @@ function asegurarFormatoOperacionesCompensadas_(ss) {
     .setRanges([diario.getRange(6, 6, cantidadFilas, 1)])
     .build();
 
-  reglas.push(reglaCompensada);
-  reglas.push(reglaNegativoD);
-  reglas.push(reglaNegativoF);
+  // Sheets aplica primero la regla ubicada más arriba.
+  // Los negativos deben evaluarse antes que el gris general de la fila.
+  reglas = [reglaNegativoD, reglaNegativoF, reglaCompensada].concat(reglas);
   diario.setConditionalFormatRules(reglas);
 
   // La limpieza completa se ejecuta desde el menú para no demorar onOpen.
