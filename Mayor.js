@@ -162,12 +162,12 @@ function actualizarMayorV1() {
       ultimaColumna
     );
     var totalRetiros = Number(filaRetiro[1]) || 0;
-    var promedioRetirosMensual = cantidadMeses > 0
-      ? totalRetiros / cantidadMeses
+    var promedioRetirosSocioMensual = cantidadMeses > 0
+      ? totalRetiros / cantidadMeses / 3
       : 0;
     filaRetiro[0] =
-      'Retiros total USD ' + formatearEnteroEtiquetaMayorV1_(totalRetiros) +
-      ' y promedio ' + formatearEnteroEtiquetaMayorV1_(promedioRetirosMensual);
+      'Retiro total ' + formatearEnteroEtiquetaMayorV1_(totalRetiros) +
+      ' y promedio ' + formatearEnteroEtiquetaMayorV1_(promedioRetirosSocioMensual);
     filas.push(filaRetiro);
     tipos.push('retiro');
   }
@@ -254,7 +254,7 @@ function actualizarMayorV1() {
 
   cuentasMorosas.forEach(function(cuenta) {
     var filaMorosa = cuenta.fila.slice();
-    filaMorosa[0] = '\u00a0\u00a0' + cuenta.nombre;
+    filaMorosa[0] = '\u00a0\u00a0' + nombreMostrarMayorV1_(cuenta.nombre);
     filas.push(filaMorosa);
     tipos.push('morosoCuenta');
   });
@@ -307,7 +307,7 @@ function convertirFilaFuenteMayorV1_(nombre, origen, cantidadMeses, ultimaColumn
 
 function convertirCuentaMayorV1_(nombre, origen, meses, ultimaColumna, tasaArsActual, tasaEuroUsd, tasaBrlUsd) {
   var fila = nuevaFilaMayorV1_(ultimaColumna);
-  fila[0] = nombre;
+  fila[0] = nombreMostrarMayorV1_(nombre);
 
   // Desde D en adelante se muestran los movimientos mensuales completos
   // en la moneda propia de cada cuenta, sin dividir por mil.
@@ -362,6 +362,14 @@ function convertirAcumuladoNativoAUsdMayorV1_(acumuladoNativo, nombre, tasaArsUs
   }
 
   return importeUsd / 1000;
+}
+
+function nombreMostrarMayorV1_(nombre) {
+  var texto = String(nombre || '').trim();
+  if (/^Retiro\b/i.test(texto)) {
+    return texto.replace(/\bARS\b/gi, '').replace(/\s+/g, ' ').trim();
+  }
+  return texto;
 }
 
 function nuevaFilaMayorV1_(cantidadColumnas) {
@@ -490,19 +498,65 @@ function aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMese
         .setFontSize(8)
         .setFontColor('#000000');
     } else if (tipo === 'titulo') {
-      rangoFila.setFontWeight('bold').setBackground('#ffffff');
+      rangoFila.setFontWeight('bold').setFontSize(10).setBackground('#ffffff');
     } else if (tipo === 'retiro') {
       rangoFila.setBackground('#cfe2f3');
     } else if (tipo === 'morosos' || tipo === 'morososTitulo') {
       rangoFila.setBackground('#f4cccc');
-      if (tipo === 'morososTitulo') rangoFila.setFontWeight('bold');
+      if (tipo === 'morososTitulo') {
+        rangoFila.setFontWeight('bold').setFontSize(10);
+      }
     } else if (tipo === 'acubrir') {
       rangoFila.setBackground(
         Number(filas[indice][1]) > 0 ? '#d9ead3' : '#f4cccc'
       );
     } else if (tipo === 'ceroTitulo' || tipo === 'cero') {
       rangoFila.setBackground('#d9ead3');
-      if (tipo === 'ceroTitulo') rangoFila.setFontWeight('bold');
+      if (tipo === 'ceroTitulo') {
+        rangoFila.setFontWeight('bold').setFontSize(10);
+      }
+    }
+  });
+
+  // Colorea individualmente las cuentas Retiro.
+  tipos.forEach(function(tipo, indice) {
+    var nombreVisible = String(filas[indice][0] || '')
+      .replace(/\u00a0/g, ' ')
+      .trim();
+    if ((tipo === 'cuenta' || tipo === 'cero' || tipo === 'morosoCuenta') &&
+        /^Retiro\b/i.test(nombreVisible)) {
+      mayor.getRange(indice + 1, 1, 1, ultimaColumna)
+        .setBackground('#cfe2f3');
+    }
+  });
+
+  // Alternancia tenue propia de CUENTAS EN CERO.
+  var indiceCero = 0;
+  tipos.forEach(function(tipo, indice) {
+    if (tipo !== 'cero') return;
+    mayor.getRange(indice + 1, 1, 1, ultimaColumna)
+      .setBackground(indiceCero % 2 === 0 ? '#eaf4e7' : '#f6faf4');
+    indiceCero++;
+  });
+
+  // Alternancia tenue propia del detalle de MOROSOS.
+  var indiceMoroso = 0;
+  tipos.forEach(function(tipo, indice) {
+    if (tipo !== 'morosoCuenta') return;
+    mayor.getRange(indice + 1, 1, 1, ultimaColumna)
+      .setBackground(indiceMoroso % 2 === 0 ? '#fce8e8' : '#fff6f6');
+    indiceMoroso++;
+  });
+
+  // El celeste de Retiro prevalece sobre las alternancias anteriores.
+  tipos.forEach(function(tipo, indice) {
+    var nombreVisible = String(filas[indice][0] || '')
+      .replace(/\u00a0/g, ' ')
+      .trim();
+    if ((tipo === 'cuenta' || tipo === 'cero' || tipo === 'morosoCuenta') &&
+        /^Retiro\b/i.test(nombreVisible)) {
+      mayor.getRange(indice + 1, 1, 1, ultimaColumna)
+        .setBackground('#cfe2f3');
     }
   });
 
