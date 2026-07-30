@@ -70,9 +70,6 @@ function actualizarMayorV1() {
   var filas = [];
   var tipos = [];
 
-  filas.push(nuevaFilaMayorV1_(ultimaColumna));
-  tipos.push('libre');
-
   var filaEuro = nuevaFilaMayorV1_(ultimaColumna);
   filaEuro[0] = 'T/C Euro/USD';
   filaEuro[2] = tasaEuroUsd;
@@ -111,18 +108,18 @@ function actualizarMayorV1() {
   meses.forEach(function(mes, indice) {
     var fechaMes = mes.valor instanceof Date ? mes.valor : new Date(mes.valor);
     encabezado[3 + indice] = isNaN(fechaMes.getTime())
-      ? mes.valor
-      : fechaMes.getMonth() + 1;
+      ? abreviarMesMayorV1_(mes.valor)
+      : abreviarMesMayorV1_(fechaMes);
   });
   filas.push(encabezado);
   tipos.push('encabezado');
 
   var filaPatrimonio = nuevaFilaMayorV1_(ultimaColumna);
-  filaPatrimonio[0] = 'Patrimonio Neto (USD)';
+  filaPatrimonio[0] = 'PATRIMONIO NETO';
   filaPatrimonio[1] = resumenes.reduce(function(total, fila) {
     return total + (Number(fila[1]) || 0);
   }, 0);
-  filaPatrimonio[2] = 'Resultados (USD)';
+  filaPatrimonio[2] = 'Result (USDk)';
   meses.forEach(function(mes, indice) {
     filaPatrimonio[3 + indice] = Number(mes.patrimonio) || 0;
   });
@@ -336,6 +333,22 @@ function formatearMesMayorV1_(valor) {
   return fecha.getFullYear() + '-' + nombres[fecha.getMonth()];
 }
 
+function abreviarMesMayorV1_(valor) {
+  var fecha = valor instanceof Date ? valor : new Date(valor);
+  if (!isNaN(fecha.getTime())) {
+    return ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
+      'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][fecha.getMonth()];
+  }
+
+  var texto = String(valor || '').trim();
+  var numero = Number(texto);
+  if (numero >= 1 && numero <= 12) {
+    return ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
+      'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][numero - 1];
+  }
+  return texto;
+}
+
 function obtenerAnioMayorV1_(valor) {
   if (valor instanceof Date && !isNaN(valor.getTime())) return String(valor.getFullYear());
   var texto = String(valor || '');
@@ -359,11 +372,12 @@ function aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMese
   mayor.setColumnWidth(3, 115);
   if (cantidadMeses > 0) mayor.setColumnWidths(4, cantidadMeses, 88);
 
-  // Todos los importes sin decimales. Solamente C2 y C3 conservan dos.
+  // Todos los importes sin decimales. Al eliminar la fila vacía,
+  // las tasas Euro/USD y BRL/USD quedan en C1 y C2.
   rango.setNumberFormat('#,##0;[Red](#,##0);-');
-  mayor.getRange(2, 1, 3, 1).setNumberFormat('@');
+  mayor.getRange(1, 1, 3, 1).setNumberFormat('@');
+  mayor.getRange(1, 3).setNumberFormat('0.00');
   mayor.getRange(2, 3).setNumberFormat('0.00');
-  mayor.getRange(3, 3).setNumberFormat('0.00');
 
   if (filaPatrimonio > 0 && filas.length >= filaPatrimonio) {
     mayor.getRange(filaPatrimonio, 2, filas.length - filaPatrimonio + 1, 1)
@@ -393,8 +407,13 @@ function aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMese
       rangoFila.setBackground('#424242').setFontColor('#ffffff')
         .setFontWeight('bold');
     } else if (tipo === 'patrimonio') {
-      rangoFila.setFontWeight('bold').setFontSize(10)
+      rangoFila.setBackground('#424242').setFontColor('#ffffff')
+        .setFontWeight('bold').setFontSize(10)
         .setBorder(null, null, true, null, null, null, '#b7b7b7', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+      mayor.getRange(fila, 3)
+        .setFontWeight('normal')
+        .setFontSize(8)
+        .setFontColor('#ffffff');
     } else if (tipo === 'titulo') {
       rangoFila.setFontWeight('bold').setBackground('#ffffff');
     } else if (tipo === 'retiro') {
@@ -472,7 +491,7 @@ function asegurarBotonActualizarMayorV1_(ss) {
     botonExistente
       .setAltTextTitle(titulo)
       .setAltTextDescription('Actualiza el Libro Mayor de RegOps v1.')
-      .setAnchorCell(hoja.getRange('A1'))
+      .setAnchorCell(hoja.getRange('D1'))
       .setAnchorCellXOffset(0)
       .setAnchorCellYOffset(0)
       .setWidth(125)
@@ -489,10 +508,10 @@ function asegurarBotonActualizarMayorV1_(ss) {
     'Actualizar-Mayor-v1.png'
   );
 
-  hoja.insertImage(blob, 1, 1, 4, 2)
+  hoja.insertImage(blob, 4, 1, 4, 2)
     .setAltTextTitle(titulo)
     .setAltTextDescription('Actualiza el Libro Mayor de RegOps v1.')
-    .setAnchorCell(hoja.getRange('A1'))
+    .setAnchorCell(hoja.getRange('D1'))
     .setAnchorCellXOffset(0)
     .setAnchorCellYOffset(0)
     .setWidth(125)
