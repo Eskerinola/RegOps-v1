@@ -27,16 +27,19 @@ var CONFIG = {
 
 function onOpen() {
   var ss = SpreadsheetApp.getActive();
-  prepararHojasRegOpsV1_(ss);
-  asegurarFormatoOperacionesCompensadas_(ss);
-  asegurarModeloRelacionalCuentasV1_(ss);
 
-  ss.addMenu('RegOps v1', [
+  // El menú se crea primero para que siempre quede disponible,
+  // aunque alguna tarea posterior demore o falle.
+  ss.addMenu('RegOps', [
     { name: 'Actualizar Mayor', functionName: 'actualizarMayorV1' },
+    { name: 'Limpiar formato del Diario', functionName: 'limpiarFormatoDiarioV1' },
     { name: 'Actualizar cuentas desde v2', functionName: 'actualizarEstructuraCuentasDesdeV2' },
     { name: 'Instalar modelo de cuentas por ID', functionName: 'instalarModeloRelacionalCuentasV1' }
   ]);
 
+  prepararHojasRegOpsV1_(ss);
+  asegurarFormatoOperacionesCompensadas_(ss);
+  asegurarModeloRelacionalCuentasV1_(ss);
   actualizarMayorV1();
 
   var diario = ss.getSheetByName('Diario');
@@ -106,12 +109,8 @@ function asegurarFormatoOperacionesCompensadas_(ss) {
   reglas.push(reglaCompensada);
   diario.setConditionalFormatRules(reglas);
 
-  // Limpieza única de fondos grises heredados en filas que no compensan.
-  var propiedades = PropertiesService.getDocumentProperties();
-  if (propiedades.getProperty('REGOPS_V1_FONDO_DIARIO') !== '2') {
-    limpiarFondosGrisesNoCompensadosV1_(diario, 6, diario.getLastRow());
-    propiedades.setProperty('REGOPS_V1_FONDO_DIARIO', '2');
-  }
+  // La limpieza completa se ejecuta desde el menú para no demorar onOpen.
+  // Las filas editadas se corrigen inmediatamente desde onEdit.
 }
 
 /**
@@ -127,11 +126,7 @@ function limpiarFondosGrisesNoCompensadosV1_(diario, primeraFila, ultimaFila) {
   var montos = diario.getRange(primeraFila, 4, cantidadFilas, 3).getValues();
   var rangoVisual = diario.getRange(primeraFila, 1, cantidadFilas, 7);
   var fondos = rangoVisual.getBackgrounds();
-  var grisesHeredados = {
-    '#faf9f9': true,
-    '#f7f7f7': true,
-    '#f8f8f8': true
-  };
+  var coloresTexto = rangoVisual.getFontColors();
   var huboCambios = false;
 
   for (var i = 0; i < cantidadFilas; i++) {
@@ -144,16 +139,34 @@ function limpiarFondosGrisesNoCompensadosV1_(diario, primeraFila, ultimaFila) {
 
     if (compensa) continue;
 
+    // Toda fila no compensada debe verse normal: fondo blanco y texto negro.
     for (var col = 0; col < 7; col++) {
-      var fondo = String(fondos[i][col] || '').toLowerCase();
-      if (grisesHeredados[fondo]) {
-        fondos[i][col] = '#ffffff';
-        huboCambios = true;
-      }
+      fondos[i][col] = '#ffffff';
+      coloresTexto[i][col] = '#000000';
     }
+    huboCambios = true;
   }
 
-  if (huboCambios) rangoVisual.setBackgrounds(fondos);
+  if (huboCambios) {
+    rangoVisual.setBackgrounds(fondos);
+    rangoVisual.setFontColors(coloresTexto);
+  }
+}
+
+/**
+ * Limpia de una vez todo el sector operativo del Diario.
+ * Se ofrece en el menú RegOps porque recorrer decenas de miles de filas
+ * puede demorar y no debe bloquear la apertura de la planilla.
+ */
+function limpiarFormatoDiarioV1() {
+  var ss = SpreadsheetApp.getActive();
+  var diario = ss.getSheetByName('Diario');
+  if (!diario) throw new Error('No se encontró la hoja Diario.');
+
+  limpiarFondosGrisesNoCompensadosV1_(diario, 6, diario.getLastRow());
+  asegurarFormatoOperacionesCompensadas_(ss);
+  SpreadsheetApp.flush();
+  ss.toast('Formato del Diario corregido.', 'RegOps', 4);
 }
 
 
