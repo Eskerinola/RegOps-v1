@@ -112,7 +112,10 @@ function asegurarFormatoOperacionesCompensadas_(ss) {
       if (!condicion) return true;
 
       var valores = condicion.getCriteriaValues();
-      return !(valores && formulasRegOps[String(valores[0])]);
+      if (!valores || !valores.length) return true;
+
+      var formulaExistente = String(valores[0] || '').replace(/\s/g, '');
+      return formulaExistente.indexOf('ABS($D6+$F6)') === -1;
     } catch (err) {
       return true;
     }
@@ -144,126 +147,26 @@ function asegurarFormatoOperacionesCompensadas_(ss) {
   reglas = [reglaNegativoD, reglaNegativoF, reglaCompensada].concat(reglas);
   diario.setConditionalFormatRules(reglas);
 
-  // La limpieza completa se ejecuta desde el menú para no demorar onOpen.
-  // Las filas editadas se corrigen inmediatamente desde onEdit.
+  // Todo el efecto visual queda resuelto por estas reglas; no se recorren filas.
 }
 
 /**
- * Convierte en blanco solamente los fondos grises heredados.
- * No toca filas compensadas ni fondos de otros colores.
- */
-function limpiarFondosGrisesNoCompensadosV1_(diario, primeraFila, ultimaFila) {
-  primeraFila = Math.max(Number(primeraFila) || 6, 6);
-  ultimaFila = Math.min(Number(ultimaFila) || diario.getLastRow(), diario.getMaxRows());
-  if (ultimaFila < primeraFila) return;
-
-  var cantidadFilas = ultimaFila - primeraFila + 1;
-  var montos = diario.getRange(primeraFila, 4, cantidadFilas, 3).getValues();
-  var rangoVisual = diario.getRange(primeraFila, 1, cantidadFilas, 7);
-  var fondos = rangoVisual.getBackgrounds();
-  var coloresTexto = rangoVisual.getFontColors();
-  var huboCambios = false;
-
-  for (var i = 0; i < cantidadFilas; i++) {
-    var montoD = montos[i][0];
-    var montoF = montos[i][2];
-    var compensa =
-      montoD !== '' && montoD !== null &&
-      montoF !== '' && montoF !== null &&
-      Math.abs(Number(montoD) + Number(montoF)) < 0.01;
-
-    if (compensa) {
-      // Aplicación directa: evita que listas desplegables o formatos manuales
-      // dejen algunas celdas blancas dentro de una fila compensada.
-      for (var col = 0; col < 7; col++) {
-        fondos[i][col] = '#f7f7f7';
-        coloresTexto[i][col] = '#8a8a8a';
-      }
-
-      if (Number(montoD) < 0) coloresTexto[i][3] = '#c27a7a';
-      if (Number(montoF) < 0) coloresTexto[i][5] = '#c27a7a';
-    } else {
-      // Toda fila no compensada debe verse normal: fondo blanco y texto negro.
-      for (var col = 0; col < 7; col++) {
-        fondos[i][col] = '#ffffff';
-        coloresTexto[i][col] = '#000000';
-      }
-    }
-
-    huboCambios = true;
-  }
-
-  if (huboCambios) {
-    rangoVisual.setBackgrounds(fondos);
-    rangoVisual.setFontColors(coloresTexto);
-  }
-}
-
-/**
- * Limpia de una vez todo el sector operativo del Diario.
- * Se ofrece en el menú RegOps porque recorrer decenas de miles de filas
- * puede demorar y no debe bloquear la apertura de la planilla.
+ * Cancela cualquier limpieza anterior y deja solamente las reglas
+ * de formato condicional. No recorre las filas del Diario.
  */
 function limpiarFormatoDiarioV1() {
-  var lock = LockService.getScriptLock();
-  if (!lock.tryLock(5000)) return;
+  detenerLimpiezaDiarioV1_();
 
-  try {
-    var ss = SpreadsheetApp.getActive();
-    var diario = ss.getSheetByName('Diario');
-    if (!diario) throw new Error('No se encontró la hoja Diario.');
-
-    var propiedades = PropertiesService.getDocumentProperties();
-    var claveProximaFila = 'REGOPS_LIMPIEZA_PROXIMA_FILA';
-    var ultimaFila = diario.getLastRow();
-    var proximaFila = Number(propiedades.getProperty(claveProximaFila)) || ultimaFila;
-    var tamanoBloque = 500;
-    var limiteTiempo = Date.now() + 240000;
-
-    // Se procesa desde abajo hacia arriba para corregir primero
-    // los movimientos más recientes.
-    while (proximaFila >= 6 && Date.now() < limiteTiempo) {
-      var primeraFilaBloque = Math.max(6, proximaFila - tamanoBloque + 1);
-      limpiarFondosGrisesNoCompensadosV1_(
-        diario,
-        primeraFilaBloque,
-        proximaFila
-      );
-
-      proximaFila = primeraFilaBloque - 1;
-      propiedades.setProperty(claveProximaFila, String(proximaFila));
-    }
-
-    SpreadsheetApp.flush();
-
-    if (proximaFila < 6) {
-      propiedades.deleteProperty(claveProximaFila);
-      eliminarContinuacionesLimpiezaDiarioV1_();
-      asegurarFormatoOperacionesCompensadas_(ss);
-      ss.toast('Formato del Diario corregido completamente.', 'RegOps', 5);
-    } else {
-      programarContinuacionLimpiezaDiarioV1_();
-      ss.toast(
-        'Limpieza en curso. Continuará automáticamente.',
-        'RegOps',
-        5
-      );
-    }
-  } finally {
-    lock.releaseLock();
-  }
+  var ss = SpreadsheetApp.getActive();
+  asegurarFormatoOperacionesCompensadas_(ss);
+  SpreadsheetApp.flush();
+  ss.toast('Formato condicional del Diario instalado.', 'RegOps', 4);
 }
 
-function programarContinuacionLimpiezaDiarioV1_() {
-  eliminarContinuacionesLimpiezaDiarioV1_();
+function detenerLimpiezaDiarioV1_() {
+  PropertiesService.getDocumentProperties()
+    .deleteProperty('REGOPS_LIMPIEZA_PROXIMA_FILA');
 
-  ScriptApp.newTrigger('limpiarFormatoDiarioV1')
-    .timeBased()
-    .after(60000)
-    .create();
-}
-
-function eliminarContinuacionesLimpiezaDiarioV1_() {
   ScriptApp.getProjectTriggers().forEach(function(trigger) {
     if (trigger.getHandlerFunction() === 'limpiarFormatoDiarioV1') {
       ScriptApp.deleteTrigger(trigger);
@@ -348,19 +251,6 @@ function onEdit(e) {
     // 4. En Diario, C y E muestran nombres pero guardan ID ocultos.
     if (sheetName === 'Diario') {
       actualizarIdsCuentasEditadasV1_(sheet, range);
-
-      var tocaZonaVisible =
-        range.getColumn() <= 7 &&
-        range.getLastColumn() >= 1 &&
-        range.getLastRow() >= 6;
-
-      if (tocaZonaVisible) {
-        limpiarFondosGrisesNoCompensadosV1_(
-          sheet,
-          Math.max(range.getRow(), 6),
-          range.getLastRow()
-        );
-      }
     }
 
     // 5. Timestamp automático en Diario.
