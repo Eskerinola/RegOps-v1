@@ -133,12 +133,14 @@ function asegurarFormatoOperacionesCompensadas_(ss) {
   var reglaNegativoD = SpreadsheetApp.newConditionalFormatRule()
     .whenFormulaSatisfied(formulaNegativoD)
     .setFontColor('#c27a7a')
+    .setBackground('#f7f7f7')
     .setRanges([diario.getRange(6, 4, cantidadFilas, 1)])
     .build();
 
   var reglaNegativoF = SpreadsheetApp.newConditionalFormatRule()
     .whenFormulaSatisfied(formulaNegativoF)
     .setFontColor('#c27a7a')
+    .setBackground('#f7f7f7')
     .setRanges([diario.getRange(6, 6, cantidadFilas, 1)])
     .build();
 
