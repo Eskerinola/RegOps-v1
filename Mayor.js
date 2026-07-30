@@ -234,11 +234,11 @@ function convertirCuentaMayorV1_(nombre, origen, meses, ultimaColumna, tasaArsAc
   var fila = nuevaFilaMayorV1_(ultimaColumna);
   fila[0] = nombre;
 
-  // Desde D en adelante se muestran los movimientos mensuales en miles
-  // de la moneda propia de cada cuenta, sin aplicar tasas históricas.
+  // Desde D en adelante se muestran los movimientos mensuales completos
+  // en la moneda propia de cada cuenta, sin dividir por mil.
   for (var i = 0; i < meses.length; i++) {
     var indiceFuente = 2 + meses.length - 1 - i;
-    fila[3 + i] = (Number(origen[indiceFuente]) || 0) / 1000;
+    fila[3 + i] = Number(origen[indiceFuente]) || 0;
   }
 
   // C es la suma de todos los períodos, también en la moneda de la cuenta.
@@ -246,7 +246,7 @@ function convertirCuentaMayorV1_(nombre, origen, meses, ultimaColumna, tasaArsAc
     return total + (Number(valor) || 0);
   }, 0);
 
-  // B convierte el acumulado de C a miles de USD con la tasa vigente:
+  // B convierte el acumulado completo de C a USD con la tasa vigente:
   // EUR/USD de C2, BRL/USD de C3 y ARS/USD de C5.
   fila[1] = convertirAcumuladoNativoAUsdMayorV1_(
     fila[2],
@@ -336,10 +336,13 @@ function aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMese
     mayor.setColumnWidths(4, cantidadMeses, 88);
   }
 
-  rango.setNumberFormat('#,##0;[Red](#,##0);-');
+  // Formato estilo calculadora: coma para miles y punto para decimales.
+  rango.setNumberFormat('#,##0.00;[Red](#,##0.00);-');
   mayor.getRange(2, 1, 2, 1).setNumberFormat('@');
-  mayor.getRange(2, 3).setNumberFormat('#,##0');
+  mayor.getRange(2, 3).setNumberFormat('0.00');
   mayor.getRange(3, 3).setNumberFormat('0.00');
+  mayor.getRange(5, 3, 1, Math.max(ultimaColumna - 2, 1))
+    .setNumberFormat('#,##0.00');
   if (cantidadMeses > 0) {
     mayor.getRange(4, 4, 1, cantidadMeses).setNumberFormat('yyyy-mm');
   }
