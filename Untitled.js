@@ -28,16 +28,6 @@ var CONFIG = {
 function onOpen() {
   var ss = SpreadsheetApp.getActive();
 
-  // El menú se crea primero para que siempre quede disponible,
-  // aunque alguna tarea posterior demore o falle.
-  ss.addMenu('RegOps', [
-    { name: 'Actualizar Mayor', functionName: 'actualizarMayorV1' },
-    { name: 'Activar timestamp para todos', functionName: 'instalarTimestampParaTodosV1' },
-    { name: 'Limpiar formato del Diario', functionName: 'limpiarFormatoDiarioV1' },
-    { name: 'Actualizar cuentas desde v2', functionName: 'actualizarEstructuraCuentasDesdeV2' },
-    { name: 'Instalar modelo de cuentas por ID', functionName: 'instalarModeloRelacionalCuentasV1' }
-  ]);
-
   prepararHojasRegOpsV1_(ss);
   configurarSeparadoresNumericosV1_(ss);
   asegurarFormatoOperacionesCompensadas_(ss);
