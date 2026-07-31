@@ -1,714 +1,525 @@
+/**
+ * Mayor eficiente de RegOps v1.
+ *
+ * Lee Diario!A:F por bloques, agrupa en memoria y escribe valores terminados.
+ * No depende de la antigua tabla auxiliar ubicada a la derecha del Diario.
+ */
+
+var REGOPS_MAYOR_V1 = {
+  HOJA: 'Mayor',
+  DIARIO: 'Diario',
+  CUENTAS: 'CtasDefinicion',
+  PRIMERA_FILA_DIARIO: 6,
+  TAMANO_BLOQUE: 3000,
+  PROPIEDAD_SUCIO: 'REGOPS_MAYOR_DESACTUALIZADO',
+  PROPIEDAD_ACTUALIZADO: 'REGOPS_MAYOR_ULTIMA_ACTUALIZACION'
+};
+
+
 function actualizarMayorV1() {
   var ss = SpreadsheetApp.getActive();
-  var diario = ss.getSheetByName('Diario');
-  var mayor = ss.getSheetByName('Mayor');
-  var definicion = ss.getSheetByName('CtasDefinicion');
+  var diario = ss.getSheetByName(REGOPS_MAYOR_V1.DIARIO);
+  var mayor = ss.getSheetByName(REGOPS_MAYOR_V1.HOJA);
+  var definicion = ss.getSheetByName(REGOPS_MAYOR_V1.CUENTAS);
 
   if (!diario || !mayor || !definicion) {
     throw new Error('Se requieren las hojas Diario, Mayor y CtasDefinicion.');
   }
 
-  var inicio = new Date();
-  var mesesFuente = obtenerMesesMayorV1_(diario);
-  var meses = mesesFuente.slice().reverse();
-  var cantidadMeses = meses.length;
-  var ultimaColumna = 3 + cantidadMeses;
-  var tasaArsActual = Number(diario.getRange('L2').getValue()) || 1;
-  var tasaEuroUsd = Number(diario.getRange('L1').getValue()) / tasaArsActual || 1;
-  var tasaBrlUsd = 0.20;
+  var lock = LockService.getDocumentLock();
+  if (!lock.tryLock(1000)) return;
 
-  var definicionesPlan = definicion
-    .getRange(3, 1, Math.max(definicion.getLastRow() - 2, 1), 4)
-    .getValues()
-    .map(function(fila) {
-      return {
-        nombre: String(fila[0] || '').trim(),
-        estado: Number(fila[3]) || 0
-      };
-    })
-    .filter(function(cuenta) { return cuenta.nombre !== ''; });
-  var nombresPlan = definicionesPlan.map(function(cuenta) {
-    return cuenta.nombre;
-  });
+  try {
+    var tasas = obtenerTasasMayorEficienteV1_(mayor);
+    var plan = obtenerPlanMayorEficienteV1_(definicion);
+    var movimientos = acumularDiarioMayorEficienteV1_(diario);
+    var meses = Object.keys(movimientos.meses).sort().reverse();
+    asegurarColumnasMayorEficienteV1_(mayor, 3 + meses.length);
 
-  var resumenFuente = diario.getRange(6, 11, 8, 2 + cantidadMeses).getValues();
-  var cuentasFuente = diario
-    .getRange(15, 11, nombresPlan.length, 2 + cantidadMeses)
-    .getValues();
+    var filas = mayor.getLastRow();
+    var columnas = mayor.getLastColumn();
+    mayor.getRange(1, 1, filas, columnas).breakApart();
+    var datos = mayor.getRange(1, 1, filas, columnas).getValues();
 
-  var cuentas = cuentasFuente.map(function(origen, indice) {
-    var nombre = String(origen[0] || nombresPlan[indice] || '').trim();
-    return {
-      nombre: nombre,
-      estado: definicionesPlan[indice] ? definicionesPlan[indice].estado : 0,
-      grupo: grupoCuentaMayorV1_(nombre),
-      fila: convertirCuentaMayorV1_(
-        nombre,
-        origen,
-        meses,
-        ultimaColumna,
-        tasaArsActual,
-        tasaEuroUsd,
-        tasaBrlUsd
-      )
-    };
-  }).filter(function(cuenta) {
-    return cuenta.nombre !== '';
-  });
+    var tasaArsActual = tasas.actual.ars || 1;
+    datos[0][0] = 'T/C Euro/USD';
+    datos[0][1] = tasas.actual.euro;
+    datos[1][0] = 'T/C BRL/USD';
+    datos[1][1] = tasas.actual.brl;
+    datos[2][0] = 'T/C ARS/USD';
+    datos[2][1] = tasaArsActual;
 
-  var definicionesResumen = [
-    { nombre: 'CJ ARS (USD)', coincide: function(n) { return /^CJ\b/i.test(n) && /\bARS\b/i.test(n); } },
-    { nombre: 'CJ USD', coincide: function(n) { return /^CJ\b/i.test(n) && /\bUSD\b/i.test(n); } },
-    { nombre: 'CJ EURO (USD)', coincide: function(n) { return /^CJ\b/i.test(n) && /\b(EURO|EUR)\b/i.test(n); } },
-    { nombre: 'CJ BRL (USD)', coincide: function(n) { return /^CJ\b/i.test(n) && /\b(BRL|REAL|REALES)\b/i.test(n); } },
-    { nombre: 'CC ARS (USD)', coincide: function(n) { return /^CC\b/i.test(n) && /\bARS\b/i.test(n); } },
-    { nombre: 'CC USD', coincide: function(n) { return /^CC\b/i.test(n) && /\bUSD\b/i.test(n); } },
-    { nombre: 'CC BRL (USD)', coincide: function(n) { return /^CC\b/i.test(n) && /\b(BRL|REAL|REALES)\b/i.test(n); } },
-    { nombre: 'INV USD (terceros)', coincide: function(n) { return /^INV\s/i.test(n) && !/^INVP\b/i.test(n); } },
-    { nombre: 'INVP USD (TT)', coincide: function(n) { return /^INVP\b/i.test(n); } }
-  ];
-
-  var resumenes = definicionesResumen.map(function(definicion) {
-    return acumularCuentasMayorV1_(
-      definicion.nombre,
-      cuentas.filter(function(cuenta) { return definicion.coincide(cuenta.nombre); }),
-      ultimaColumna
-    );
-  });
-
-  var filas = [];
-  var tipos = [];
-
-  var filaEuro = nuevaFilaMayorV1_(ultimaColumna);
-  filaEuro[0] = 'T/C Euro/USD';
-  filaEuro[1] = tasaEuroUsd;
-  filas.push(filaEuro);
-  tipos.push('tasa');
-
-  var filaBrl = nuevaFilaMayorV1_(ultimaColumna);
-  filaBrl[0] = 'T/C BRL/USD';
-  filaBrl[1] = tasaBrlUsd;
-  filas.push(filaBrl);
-  tipos.push('tasa');
-
-  var tasasArs = nuevaFilaMayorV1_(ultimaColumna);
-  tasasArs[0] = 'T/C ARS/USD';
-  tasasArs[1] = tasaArsActual;
-  meses.forEach(function(mes, indice) {
-    tasasArs[3 + indice] = mes.tasa;
-  });
-  filas.push(tasasArs);
-  tipos.push('tasa');
-
-  var filaAnios = nuevaFilaMayorV1_(ultimaColumna);
-  meses.forEach(function(mes, indice) {
-    var fechaMes = mes.valor instanceof Date ? mes.valor : new Date(mes.valor);
-    filaAnios[3 + indice] = isNaN(fechaMes.getTime())
-      ? obtenerAnioMayorV1_(mes.valor)
-      : fechaMes.getFullYear();
-  });
-  filas.push(filaAnios);
-  tipos.push('anios');
-
-  var encabezado = nuevaFilaMayorV1_(ultimaColumna);
-  encabezado[0] = '';
-  encabezado[1] = 'Acum (USDk)';
-  encabezado[2] = 'Acum (moneda)';
-  meses.forEach(function(mes, indice) {
-    var fechaMes = mes.valor instanceof Date ? mes.valor : new Date(mes.valor);
-    encabezado[3 + indice] = isNaN(fechaMes.getTime())
-      ? abreviarMesMayorV1_(mes.valor)
-      : abreviarMesMayorV1_(fechaMes);
-  });
-  filas.push(encabezado);
-  tipos.push('encabezado');
-
-  var filaPatrimonio = nuevaFilaMayorV1_(ultimaColumna);
-  filaPatrimonio[0] = 'PATRIMONIO NETO';
-  var patrimonioNetoUsd = resumenes.reduce(function(total, fila) {
-    return total + (Number(fila[1]) || 0);
-  }, 0);
-  filaPatrimonio[1] = patrimonioNetoUsd;
-  filaPatrimonio[2] = 'Result (USDk)';
-  meses.forEach(function(mes, indice) {
-    filaPatrimonio[3 + indice] = Number(mes.patrimonio) || 0;
-  });
-  filas.push(filaPatrimonio);
-  tipos.push('patrimonio');
-
-  filas.push(filaTituloMayorV1_('CUENTAS AGRUPADAS', ultimaColumna));
-  tipos.push('titulo');
-
-  var resumenCero = [];
-  resumenes.forEach(function(fila) {
-    if (Math.abs(Number(fila[1]) || 0) < 0.5) {
-      resumenCero.push(fila);
-    } else {
-      filas.push(fila);
-      tipos.push('agrupada');
+    // Limpia encabezados y resultados mensuales anteriores.
+    for (var c = 3; c < columnas; c++) {
+      datos[2][c] = '';
+      datos[3][c] = '';
+      datos[4][c] = '';
     }
-  });
 
-  filas.push(nuevaFilaMayorV1_(ultimaColumna));
-  tipos.push('libre');
-
-  var cuentasRetiro = cuentas.filter(function(cuenta) {
-    return /^Retiro\b/i.test(cuenta.nombre);
-  });
-  if (cuentasRetiro.length) {
-    var filaRetiro = acumularCuentasMayorV1_(
-      '',
-      cuentasRetiro,
-      ultimaColumna
-    );
-    // Convierte cada retiro mensual con la T/C correspondiente a ese
-    // período y recién después suma el total expresado en USDk.
-    var totalRetiros = cuentasRetiro.reduce(function(total, cuenta) {
-      return total + meses.reduce(function(subtotal, mes, indiceMes) {
-        var importePeriodo = Number(cuenta.fila[3 + indiceMes]) || 0;
-        var tasaArsPeriodo = Number(mes.tasa) || tasaArsActual;
-        return subtotal + convertirAcumuladoNativoAUsdMayorV1_(
-          importePeriodo,
-          cuenta.nombre,
-          tasaArsPeriodo,
-          tasaEuroUsd,
-          tasaBrlUsd
-        );
-      }, 0);
-    }, 0);
-    filaRetiro[1] = totalRetiros;
-
-    var promedioRetirosSocioMensual = cantidadMeses > 0
-      ? totalRetiros / cantidadMeses / 3
-      : 0;
-    filaRetiro[0] =
-      'Retiro total USDk ' + formatearEnteroEtiquetaMayorV1_(totalRetiros) +
-      ' y promedio USDk ' +
-      formatearEnteroEtiquetaMayorV1_(promedioRetirosSocioMensual) +
-      '/mes/persona';
-    filas.push(filaRetiro);
-    tipos.push('retiro');
-  }
-
-  var filaMorosos = nuevaFilaMayorV1_(ultimaColumna);
-  filaMorosos[0] = 'MOROSOS';
-  filaMorosos[1] = cuentas
-    .filter(function(cuenta) { return cuenta.estado === 2; })
-    .reduce(function(total, cuenta) {
-      return total + (Number(cuenta.fila[1]) || 0);
-    }, 0);
-  filas.push(filaMorosos);
-  tipos.push('morosos');
-
-  function valorResumenColumnaB_(nombre) {
-    var fila = resumenes.filter(function(resumen) {
-      return String(resumen[0] || '').trim() === nombre;
-    })[0];
-    return fila ? (Number(fila[1]) || 0) : 0;
-  }
-
-  var filaACubrir = nuevaFilaMayorV1_(ultimaColumna);
-  filaACubrir[1] =
-    valorResumenColumnaB_('INV USD (terceros)') -
-    valorResumenColumnaB_('INVP USD (TT)') +
-    patrimonioNetoUsd;
-  filaACubrir[0] = filaACubrir[1] > 0 ? 'EXCEDENTE' : 'A CUBRIR';
-  filas.push(filaACubrir);
-  tipos.push('acubrir');
-
-  var cuentasCero = cuentas.filter(function(cuenta) {
-    return Math.abs(Number(cuenta.fila[1]) || 0) < 0.5;
-  });
-
-  ['ACTIVO', 'PATRIMONIO', 'RESULTADO'].forEach(function(grupo) {
-    var grupoCuentas = cuentas.filter(function(cuenta) {
-      return cuenta.grupo === grupo &&
-        Math.abs(Number(cuenta.fila[1]) || 0) >= 0.5;
+    meses.forEach(function(clave, indice) {
+      var partes = clave.split('-');
+      var anio = Number(partes[0]);
+      var mes = Number(partes[1]);
+      var columna = 3 + indice;
+      datos[2][columna] = tasas.historicas[clave] || tasaArsActual;
+      datos[3][columna] = anio;
+      datos[4][columna] = abreviarMesMayorEficienteV1_(mes);
     });
 
-    if (!grupoCuentas.length) return;
-
-    filas.push(nuevaFilaMayorV1_(ultimaColumna));
-    tipos.push('libre');
-    filas.push(filaTituloMayorV1_(grupo, ultimaColumna));
-    tipos.push('titulo');
-
-    grupoCuentas.forEach(function(cuenta) {
-      cuenta.fila[0] = '\u00a0\u00a0' + cuenta.fila[0];
-      filas.push(cuenta.fila);
-      tipos.push('cuenta');
-    });
-  });
-
-  filas.push(nuevaFilaMayorV1_(ultimaColumna));
-  tipos.push('libre');
-  filas.push(filaTituloMayorV1_('CUENTAS EN CERO', ultimaColumna));
-  tipos.push('ceroTitulo');
-
-  resumenCero.concat(cuentasCero.map(function(cuenta) {
-    cuenta.fila[0] = '\u00a0\u00a0' + cuenta.fila[0];
-    return cuenta.fila;
-  })).forEach(function(fila) {
-    filas.push(fila);
-    tipos.push('cero');
-  });
-
-  // Detalle de cuentas con Estado 2, ordenadas por deuda convertida
-  // a USD (columna B), de mayor a menor en valor absoluto.
-  var cuentasMorosas = cuentas
-    .filter(function(cuenta) { return cuenta.estado === 2; })
-    .sort(function(a, b) {
-      return Math.abs(Number(b.fila[1]) || 0) -
-        Math.abs(Number(a.fila[1]) || 0);
+    var cuentaPorVisible = {};
+    plan.cuentas.forEach(function(cuenta) {
+      cuenta.filas = [];
+      cuentaPorVisible[
+        normalizarMayorEficienteV1_(nombreVisibleMayorEficienteV1_(cuenta.nombre))
+      ] = cuenta;
     });
 
-  filas.push(nuevaFilaMayorV1_(ultimaColumna));
-  tipos.push('libre');
-
-  var tituloMorosos = filaTituloMayorV1_('MOROSOS', ultimaColumna);
-  tituloMorosos[1] = Number(filaMorosos[1]) || 0;
-  filas.push(tituloMorosos);
-  tipos.push('morososTitulo');
-
-  cuentasMorosas.forEach(function(cuenta) {
-    var filaMorosa = cuenta.fila.slice();
-    filaMorosa[0] = '\u00a0\u00a0' + nombreMostrarMayorV1_(cuenta.nombre);
-    filas.push(filaMorosa);
-    tipos.push('morosoCuenta');
-  });
-
-  mayor.getRange(1, 1, mayor.getMaxRows(), mayor.getMaxColumns()).breakApart();
-  mayor.clear();
-  mayor.getRange(1, 1, filas.length, ultimaColumna).setValues(filas);
-  aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMeses);
-  asegurarBotonActualizarMayorV1_(ss);
-  SpreadsheetApp.flush();
-
-  ss.toast(
-    'Mayor actualizado en ' + ((new Date() - inicio) / 1000).toFixed(1) + ' s',
-    'RegOps v1',
-    4
-  );
-}
-
-function obtenerMesesMayorV1_(diario) {
-  var ancho = Math.max(diario.getLastColumn() - 12, 1);
-  var fechas = diario.getRange(5, 13, 1, ancho).getValues()[0];
-  var tasas = diario.getRange(2, 13, 1, ancho).getValues()[0];
-  var patrimonio = diario.getRange(4, 13, 1, ancho).getValues()[0];
-  var meses = [];
-
-  for (var i = 0; i < fechas.length; i++) {
-    if (fechas[i] === '' || fechas[i] === null) break;
-    meses.push({
-      valor: fechas[i],
-      tasa: tasas[i],
-      patrimonio: patrimonio[i]
+    datos.forEach(function(fila, indice) {
+      var cuenta = cuentaPorVisible[normalizarMayorEficienteV1_(fila[0])];
+      if (cuenta) cuenta.filas.push(indice + 1);
     });
-  }
 
-  return meses;
-}
-
-function convertirFilaFuenteMayorV1_(nombre, origen, cantidadMeses, ultimaColumna, dividirMil) {
-  var fila = nuevaFilaMayorV1_(ultimaColumna);
-  fila[0] = nombre;
-  fila[1] = Number(origen[1]) || 0;
-
-  for (var i = 0; i < cantidadMeses; i++) {
-    var valor = Number(origen[2 + cantidadMeses - 1 - i]) || 0;
-    fila[3 + i] = dividirMil ? valor / 1000 : valor;
-  }
-
-  return fila;
-}
-
-function convertirCuentaMayorV1_(nombre, origen, meses, ultimaColumna, tasaArsActual, tasaEuroUsd, tasaBrlUsd) {
-  var fila = nuevaFilaMayorV1_(ultimaColumna);
-  fila[0] = nombreMostrarMayorV1_(nombre);
-
-  // Desde D en adelante se muestran los movimientos mensuales completos
-  // en la moneda propia de cada cuenta, sin dividir por mil.
-  for (var i = 0; i < meses.length; i++) {
-    var indiceFuente = 2 + meses.length - 1 - i;
-    fila[3 + i] = Number(origen[indiceFuente]) || 0;
-  }
-
-  // C es la suma de todos los períodos, también en la moneda de la cuenta.
-  fila[2] = fila.slice(3).reduce(function(total, valor) {
-    return total + (Number(valor) || 0);
-  }, 0);
-
-  // B convierte el acumulado completo de C a USD con la tasa vigente:
-  // EUR/USD de C2, BRL/USD de C3 y ARS/USD de C5.
-  fila[1] = convertirAcumuladoNativoAUsdMayorV1_(
-    fila[2],
-    nombre,
-    tasaArsActual,
-    tasaEuroUsd,
-    tasaBrlUsd
-  );
-
-  return fila;
-}
-
-function acumularCuentasMayorV1_(nombre, cuentas, ultimaColumna) {
-  var fila = nuevaFilaMayorV1_(ultimaColumna);
-  fila[0] = nombre;
-
-  cuentas.forEach(function(cuenta) {
-    for (var col = 1; col < ultimaColumna; col++) {
-      fila[col] = (Number(fila[col]) || 0) + (Number(cuenta.fila[col]) || 0);
-    }
-  });
-
-  return fila;
-}
-
-function convertirAcumuladoNativoAUsdMayorV1_(acumuladoNativo, nombre, tasaArsUsd, tasaEuroUsd, tasaBrlUsd) {
-  var cuenta = String(nombre || '').toUpperCase();
-  var importeUsd;
-
-  if (/\bARS\b/.test(cuenta)) {
-    importeUsd = acumuladoNativo / tasaArsUsd;
-  } else if (/\bEURO\b|\bEUR\b/.test(cuenta)) {
-    importeUsd = acumuladoNativo * tasaEuroUsd;
-  } else if (/\bBRL\b|\bREAL(?:ES)?\b/.test(cuenta)) {
-    importeUsd = acumuladoNativo * tasaBrlUsd;
-  } else {
-    importeUsd = acumuladoNativo;
-  }
-
-  return importeUsd / 1000;
-}
-
-function nombreMostrarMayorV1_(nombre) {
-  var texto = String(nombre || '').trim();
-  if (/^Retiro\b/i.test(texto)) {
-    return texto.replace(/\bARS\b/gi, '').replace(/\s+/g, ' ').trim();
-  }
-  return texto;
-}
-
-function nuevaFilaMayorV1_(cantidadColumnas) {
-  return new Array(cantidadColumnas).fill('');
-}
-
-function filaTituloMayorV1_(titulo, cantidadColumnas) {
-  var fila = nuevaFilaMayorV1_(cantidadColumnas);
-  fila[0] = titulo;
-  return fila;
-}
-
-function grupoCuentaMayorV1_(nombre) {
-  if (/^(CJ|CC)\b/i.test(nombre)) return 'ACTIVO';
-  if (/^INV/i.test(nombre)) return 'PATRIMONIO';
-  return 'RESULTADO';
-}
-
-function normalizarNombreResumenMayorV1_(nombre) {
-  return String(nombre || '')
-    .replace(/\[USD\]/g, '(USD)')
-    .replace(/\s*\(no suma en PN\)\s*/i, '')
-    .trim();
-}
-
-function formatearMesMayorV1_(valor) {
-  var fecha = valor instanceof Date ? valor : new Date(valor);
-  if (isNaN(fecha.getTime())) return String(valor || '');
-
-  var nombres = [
-    'Enero', 'Feb', 'Marzo', 'Abril', 'Mayo', 'Junio',
-    'Julio', 'Agosto', 'Sept', 'Oct', 'Nov', 'Dic'
-  ];
-  return fecha.getFullYear() + '-' + nombres[fecha.getMonth()];
-}
-
-function abreviarMesMayorV1_(valor) {
-  var fecha = valor instanceof Date ? valor : new Date(valor);
-  if (!isNaN(fecha.getTime())) {
-    return ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
-      'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][fecha.getMonth()];
-  }
-
-  var texto = String(valor || '').trim();
-  var numero = Number(texto);
-  if (numero >= 1 && numero <= 12) {
-    return ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
-      'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][numero - 1];
-  }
-  return texto;
-}
-
-function formatearEnteroEtiquetaMayorV1_(valor) {
-  var numero = Math.round(Number(valor) || 0);
-  var signo = numero < 0 ? '-' : '';
-  return signo + String(Math.abs(numero)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-}
-
-function obtenerAnioMayorV1_(valor) {
-  if (valor instanceof Date && !isNaN(valor.getTime())) return String(valor.getFullYear());
-  var texto = String(valor || '');
-  var coincidencia = texto.match(/\d{4}/);
-  return coincidencia ? coincidencia[0] : '';
-}
-
-function aplicarFormatoMayorV1_(mayor, filas, tipos, ultimaColumna, cantidadMeses) {
-  var rango = mayor.getRange(1, 1, filas.length, ultimaColumna);
-  var filaAnios = tipos.indexOf('anios') + 1;
-  var filaEncabezado = tipos.indexOf('encabezado') + 1;
-  var filaPatrimonio = tipos.indexOf('patrimonio') + 1;
-
-  rango.setFontFamily('Nunito').setFontSize(8).setVerticalAlignment('middle');
-  mayor.setFrozenRows(filaPatrimonio);
-  mayor.setFrozenColumns(3);
-  mayor.setHiddenGridlines(false);
-
-  mayor.setColumnWidth(1, 240);
-  mayor.setColumnWidth(2, 85);
-  mayor.setColumnWidth(3, 100);
-  if (cantidadMeses > 0) mayor.setColumnWidths(4, cantidadMeses, 58);
-
-  // Todos los importes sin decimales. Las tasas quedan en B1:B3;
-  // Euro/USD y BRL/USD conservan dos decimales.
-  rango.setNumberFormat('#,##0;[Red](#,##0);-');
-  mayor.getRange(1, 1, 3, 1).setNumberFormat('@');
-  mayor.getRange(1, 2).setNumberFormat('0.00');
-  mayor.getRange(2, 2).setNumberFormat('0.00');
-
-  if (filaAnios > 0) {
-    mayor.getRange(filaAnios, 1, 2, ultimaColumna).setFontSize(10);
-  }
-
-  if (filaPatrimonio > 0 && filas.length >= filaPatrimonio) {
-    mayor.getRange(filaPatrimonio, 2, filas.length - filaPatrimonio + 1, 1)
-      .setFontSize(10);
-  }
-
-  var fondoAlterno = '#f7f7f7';
-  for (var fila = 1; fila <= filas.length; fila++) {
-    var tipoFila = tipos[fila - 1];
-    if (fila % 2 === 0 &&
-        tipoFila !== 'titulo' &&
-        tipoFila !== 'ceroTitulo' &&
-        tipoFila !== 'anios' &&
-        tipoFila !== 'encabezado') {
-      mayor.getRange(fila, 1, 1, ultimaColumna).setBackground(fondoAlterno);
-    }
-  }
-
-  tipos.forEach(function(tipo, indice) {
-    var fila = indice + 1;
-    var rangoFila = mayor.getRange(fila, 1, 1, ultimaColumna);
-
-    if (tipo === 'anios') {
-      rangoFila.setBackground('#666666').setFontColor('#ffffff')
-        .setFontWeight('bold').setHorizontalAlignment('center');
-    } else if (tipo === 'encabezado') {
-      rangoFila.setBackground('#666666').setFontColor('#ffffff')
-        .setFontWeight('bold');
-    } else if (tipo === 'patrimonio') {
-      rangoFila.setBackground('#ffffff').setFontColor('#000000')
-        .setFontWeight('bold').setFontSize(10)
-        .setBorder(null, null, true, null, null, null, '#b7b7b7', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
-      mayor.getRange(fila, 3)
-        .setFontWeight('normal')
-        .setFontSize(8)
-        .setFontColor('#000000');
-    } else if (tipo === 'titulo') {
-      rangoFila.setFontWeight('bold').setFontSize(10).setBackground('#ffffff');
-    } else if (tipo === 'retiro') {
-      rangoFila.setBackground('#cfe2f3');
-    } else if (tipo === 'morosos' || tipo === 'morososTitulo') {
-      rangoFila.setBackground('#f4cccc');
-      if (tipo === 'morososTitulo') {
-        rangoFila.setFontWeight('bold').setFontSize(10);
-      }
-    } else if (tipo === 'acubrir') {
-      rangoFila.setBackground(
-        Number(filas[indice][1]) > 0 ? '#d9ead3' : '#f4cccc'
+    plan.cuentas.forEach(function(cuenta) {
+      cuenta.filaCanonica = cuenta.filas.length ? cuenta.filas[0] : 0;
+      var porMes = movimientos.porCuenta[cuenta.nombre] || {};
+      var acumuladoMoneda = 0;
+      meses.forEach(function(clave) {
+        acumuladoMoneda += Number(porMes[clave]) || 0;
+      });
+      cuenta.acumuladoMoneda = acumuladoMoneda;
+      cuenta.acumuladoUsdK = convertirActualMayorEficienteV1_(
+        cuenta.nombre,
+        acumuladoMoneda,
+        tasas.actual
       );
-    } else if (tipo === 'ceroTitulo' || tipo === 'cero') {
-      rangoFila.setBackground('#d9ead3');
-      if (tipo === 'ceroTitulo') {
-        rangoFila.setFontWeight('bold').setFontSize(10);
+
+      cuenta.filas.forEach(function(numeroFila) {
+        var indiceFila = numeroFila - 1;
+        datos[indiceFila][1] = cuenta.acumuladoUsdK;
+        datos[indiceFila][2] = acumuladoMoneda;
+
+        for (var col = 3; col < columnas; col++) datos[indiceFila][col] = '';
+        meses.forEach(function(clave, indiceMes) {
+          datos[indiceFila][3 + indiceMes] = Number(porMes[clave]) || 0;
+        });
+      });
+    });
+
+    var resumenes = definicionesResumenMayorEficienteV1_();
+    var filaResumen = {};
+    resumenes.forEach(function(resumen) {
+      var fila = buscarFilaMayorEficienteV1_(datos, resumen.nombre);
+      if (!fila) return;
+
+      filaResumen[resumen.nombre] = fila;
+      var incluidas = plan.cuentas.filter(function(cuenta) {
+        return cuenta.filaCanonica && resumen.coincide(cuenta.nombre);
+      });
+
+      datos[fila - 1][1] = sumarMayorEficienteV1_(incluidas, 'acumuladoUsdK');
+      datos[fila - 1][2] = sumarMayorEficienteV1_(incluidas, 'acumuladoMoneda');
+
+      for (var col = 3; col < columnas; col++) datos[fila - 1][col] = '';
+      meses.forEach(function(clave, indiceMes) {
+        datos[fila - 1][3 + indiceMes] = incluidas.reduce(function(total, cuenta) {
+          var porMes = movimientos.porCuenta[cuenta.nombre] || {};
+          return total + (Number(porMes[clave]) || 0);
+        }, 0);
+      });
+    });
+
+    var cuentasPatrimonio = plan.cuentas.filter(function(cuenta) {
+      return cuenta.filaCanonica &&
+        /^(CJ|CC|INV|INVP)\b/i.test(cuenta.nombre) &&
+        !/^Retiro\b/i.test(cuenta.nombre);
+    });
+    var filaPatrimonio = buscarFilaMayorEficienteV1_(datos, 'PATRIMONIO NETO');
+    var patrimonio = cuentasPatrimonio.reduce(function(total, cuenta) {
+      return total + cuenta.acumuladoUsdK;
+    }, 0);
+
+    if (filaPatrimonio) {
+      datos[filaPatrimonio - 1][1] = patrimonio;
+      for (var colPn = 3; colPn < columnas; colPn++) {
+        datos[filaPatrimonio - 1][colPn] = '';
       }
+      meses.forEach(function(clave, indiceMes) {
+        var tasaMes = {
+          ars: tasas.historicas[clave] || tasaArsActual,
+          euro: tasas.actual.euro,
+          brl: tasas.actual.brl
+        };
+        datos[filaPatrimonio - 1][3 + indiceMes] =
+          cuentasPatrimonio.reduce(function(total, cuenta) {
+            var valor = Number(
+              (movimientos.porCuenta[cuenta.nombre] || {})[clave]
+            ) || 0;
+            return total + convertirActualMayorEficienteV1_(
+              cuenta.nombre, valor, tasaMes
+            );
+          }, 0);
+      });
     }
-  });
 
-  // Colorea individualmente las cuentas Retiro.
-  tipos.forEach(function(tipo, indice) {
-    var nombreVisible = String(filas[indice][0] || '')
-      .replace(/\u00a0/g, ' ')
-      .trim();
-    if ((tipo === 'cuenta' || tipo === 'cero' || tipo === 'morosoCuenta') &&
-        /^Retiro\b/i.test(nombreVisible)) {
-      mayor.getRange(indice + 1, 1, 1, ultimaColumna)
-        .setBackground('#cfe2f3');
+    var retiros = plan.cuentas.filter(function(cuenta) {
+      return cuenta.filaCanonica && /^Retiro\b/i.test(cuenta.nombre);
+    });
+    var retiroTotal = 0;
+    meses.forEach(function(clave) {
+      var tasaMes = {
+        ars: tasas.historicas[clave] || tasaArsActual,
+        euro: tasas.actual.euro,
+        brl: tasas.actual.brl
+      };
+      retiros.forEach(function(cuenta) {
+        var valor = Number(
+          (movimientos.porCuenta[cuenta.nombre] || {})[clave]
+        ) || 0;
+        retiroTotal += convertirActualMayorEficienteV1_(
+          cuenta.nombre, valor, tasaMes
+        );
+      });
+    });
+
+    var filaRetiro = buscarFilaPrefijoMayorEficienteV1_(datos, 'Retiro total');
+    if (filaRetiro) {
+      datos[filaRetiro - 1][0] =
+        'Retiro total USDk ' + redondearMayorEficienteV1_(retiroTotal) +
+        ' y promedio USDk ' +
+        redondearMayorEficienteV1_(
+          retiroTotal / Math.max(meses.length, 1) / 3
+        ) +
+        '/mes/persona';
+      datos[filaRetiro - 1][1] = retiroTotal;
     }
-  });
 
-  // Alternancia tenue propia de CUENTAS EN CERO.
-  var indiceCero = 0;
-  tipos.forEach(function(tipo, indice) {
-    if (tipo !== 'cero') return;
-    mayor.getRange(indice + 1, 1, 1, ultimaColumna)
-      .setBackground(indiceCero % 2 === 0 ? '#eaf4e7' : '#f6faf4');
-    indiceCero++;
-  });
+    var morosos = plan.cuentas.filter(function(cuenta) {
+      return cuenta.estado === 2 && cuenta.filaCanonica;
+    });
+    var totalMorosos = sumarMayorEficienteV1_(morosos, 'acumuladoUsdK');
+    var filasMorosos = buscarTodasFilasMayorEficienteV1_(datos, 'MOROSOS');
+    filasMorosos.forEach(function(fila) {
+      datos[fila - 1][1] = totalMorosos;
+    });
 
-  // Alternancia tenue propia del detalle de MOROSOS.
-  var indiceMoroso = 0;
-  tipos.forEach(function(tipo, indice) {
-    if (tipo !== 'morosoCuenta') return;
-    mayor.getRange(indice + 1, 1, 1, ultimaColumna)
-      .setBackground(indiceMoroso % 2 === 0 ? '#fce8e8' : '#fff6f6');
-    indiceMoroso++;
-  });
-
-  // El celeste de Retiro prevalece sobre las alternancias anteriores.
-  tipos.forEach(function(tipo, indice) {
-    var nombreVisible = String(filas[indice][0] || '')
-      .replace(/\u00a0/g, ' ')
-      .trim();
-    if ((tipo === 'cuenta' || tipo === 'cero' || tipo === 'morosoCuenta') &&
-        /^Retiro\b/i.test(nombreVisible)) {
-      mayor.getRange(indice + 1, 1, 1, ultimaColumna)
-        .setBackground('#cfe2f3');
-    }
-  });
-
-  // Separadores finos dentro de CUENTAS AGRUPADAS:
-  // CJ / CC y CC / INV.
-  tipos.forEach(function(tipo, indice) {
-    if (tipo !== 'agrupada') return;
-    var nombre = String(filas[indice][0] || '').trim();
-    if (nombre === 'CJ USD' || nombre === 'CC USD') {
-      mayor.getRange(indice + 1, 1, 1, ultimaColumna)
-        .setBorder(null, null, true, null, null, null, '#000000', SpreadsheetApp.BorderStyle.SOLID);
-    }
-  });
-
-  mayor.getRange(1, 2, filas.length, ultimaColumna - 1).setHorizontalAlignment('right');
-  mayor.getRange(1, 1, filas.length, 1).setHorizontalAlignment('left');
-
-  if (filaEncabezado > 0) {
-    mayor.getRange(filaEncabezado, 1, 1, ultimaColumna).setHorizontalAlignment('center');
-    mayor.getRange(filaEncabezado, 1).setHorizontalAlignment('left');
-    mayor.getRange(filaEncabezado, 3).setFontWeight('normal');
-  }
-  if (filaPatrimonio > 0) {
-    mayor.getRange(filaPatrimonio, 3).setHorizontalAlignment('center');
-  }
-
-  // El total de MOROSOS enlaza con el detalle ubicado al final.
-  var filaMorososResumen = tipos.indexOf('morosos') + 1;
-  var filaMorososDetalle = tipos.indexOf('morososTitulo') + 1;
-  if (filaMorososResumen > 0 && filaMorososDetalle > 0) {
-    var textoTotalMorosos = formatearEnteroEtiquetaMayorV1_(
-      filas[filaMorososResumen - 1][1]
+    var filaCobertura = buscarFilaAlternativasMayorEficienteV1_(
+      datos, ['A CUBRIR', 'EXCEDENTE']
     );
-    var estiloEnlace = SpreadsheetApp.newTextStyle()
-      .setForegroundColor('#1155cc')
-      .setUnderline(true)
-      .build();
-    var enlaceMorosos = SpreadsheetApp.newRichTextValue()
-      .setText(textoTotalMorosos)
-      .setLinkUrl(
-        '#gid=' + mayor.getSheetId() + '&range=A' + filaMorososDetalle
-      )
-      .setTextStyle(estiloEnlace)
-      .build();
-    mayor.getRange(filaMorososResumen, 2).setRichTextValue(enlaceMorosos);
-  }
-
-  // Combina horizontalmente los meses pertenecientes al mismo año.
-  if (filaAnios > 0 && cantidadMeses > 0) {
-    var valoresAnios = filas[filaAnios - 1].slice(3);
-    var inicioGrupo = 0;
-
-    while (inicioGrupo < valoresAnios.length) {
-      var anio = String(valoresAnios[inicioGrupo] || '');
-      var finGrupo = inicioGrupo;
-
-      while (
-        finGrupo + 1 < valoresAnios.length &&
-        String(valoresAnios[finGrupo + 1] || '') === anio
-      ) {
-        finGrupo++;
-      }
-
-      var cantidadGrupo = finGrupo - inicioGrupo + 1;
-      var rangoAnio = mayor.getRange(filaAnios, 4 + inicioGrupo, 1, cantidadGrupo);
-      if (cantidadGrupo > 1) rangoAnio.merge();
-      rangoAnio.setValue(anio).setHorizontalAlignment('center');
-
-      if (finGrupo < valoresAnios.length - 1) {
-        mayor.getRange(1, 4 + finGrupo, filas.length, 1)
-          .setBorder(null, null, null, true, null, null, '#666666', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
-      }
-
-      inicioGrupo = finGrupo + 1;
+    var filaInv = filaResumen['INV USD (terceros)'];
+    var filaInvp = filaResumen['INVP USD (TT)'];
+    if (filaCobertura && filaInv && filaInvp) {
+      var cobertura =
+        Number(datos[filaInv - 1][1] || 0) -
+        Number(datos[filaInvp - 1][1] || 0) +
+        patrimonio;
+      datos[filaCobertura - 1][0] =
+        cobertura > 0 ? 'EXCEDENTE' : 'A CUBRIR';
+      datos[filaCobertura - 1][1] = cobertura;
     }
+
+    mayor.getRange(1, 1, filas, columnas).setValues(datos);
+    combinarAniosMayorEficienteV1_(mayor, meses);
+    aplicarFormatoMayorEficienteV1_(mayor, filas, columnas, meses.length);
+
+    var propiedades = PropertiesService.getDocumentProperties();
+    propiedades.setProperty(REGOPS_MAYOR_V1.PROPIEDAD_SUCIO, '0');
+    propiedades.setProperty(
+      REGOPS_MAYOR_V1.PROPIEDAD_ACTUALIZADO,
+      new Date().toISOString()
+    );
+
+    SpreadsheetApp.flush();
+    ss.toast('Mayor actualizado.', 'RegOps v1', 4);
+  } finally {
+    lock.releaseLock();
   }
 }
 
 
-/**
- * Crea o corrige el botón de actualización del Mayor.
- * Conserva una sola imagen y la vincula con actualizarMayorV1.
- */
-function asegurarBotonActualizarMayorV1_(ss) {
-  ss = ss || SpreadsheetApp.getActive();
-  var hoja = ss.getSheetByName('Mayor');
-  if (!hoja) return;
-
-  var titulo = 'RegOps v1 - Actualizar Mayor';
-  var existentes = hoja.getImages().filter(function(imagen) {
-    var tituloActual = '';
-    var scriptActual = '';
-
-    try { tituloActual = imagen.getAltTextTitle(); } catch (err) {}
-    try { scriptActual = imagen.getScript(); } catch (err) {}
-
-    return tituloActual === titulo || scriptActual === 'actualizarMayorV1';
-  });
-
-  if (existentes.length > 0) {
-    var botonExistente = existentes[0];
-    existentes.slice(1).forEach(function(imagen) { imagen.remove(); });
-
-    botonExistente
-      .setAltTextTitle(titulo)
-      .setAltTextDescription('Actualiza el Libro Mayor de RegOps v1.')
-      .setAnchorCell(hoja.getRange('D1'))
-      .setAnchorCellXOffset(0)
-      .setAnchorCellYOffset(0)
-      .setWidth(125)
-      .setHeight(27)
-      .assignScript('actualizarMayorV1');
-
+function actualizarMayorSiCorrespondeV1_() {
+  var ss = SpreadsheetApp.getActive();
+  var email = '';
+  try {
+    email = Session.getEffectiveUser().getEmail();
+    if (ss.getOwner().getEmail() !== email) return;
+  } catch (_) {
     return;
   }
 
-  var pngBase64 = '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';
-  var blob = Utilities.newBlob(
-    Utilities.base64Decode(pngBase64),
-    'image/png',
-    'Actualizar-Mayor-v1.png'
+  var propiedades = PropertiesService.getDocumentProperties();
+  var sucio = propiedades.getProperty(REGOPS_MAYOR_V1.PROPIEDAD_SUCIO);
+  var actualizado = propiedades.getProperty(
+    REGOPS_MAYOR_V1.PROPIEDAD_ACTUALIZADO
   );
-
-  hoja.insertImage(blob, 4, 1, 4, 2)
-    .setAltTextTitle(titulo)
-    .setAltTextDescription('Actualiza el Libro Mayor de RegOps v1.')
-    .setAnchorCell(hoja.getRange('D1'))
-    .setAnchorCellXOffset(0)
-    .setAnchorCellYOffset(0)
-    .setWidth(125)
-    .setHeight(27)
-    .assignScript('actualizarMayorV1');
+  if (sucio !== '0' || !actualizado) actualizarMayorV1();
 }
 
-function instalarBotonActualizarMayorV1() {
-  asegurarBotonActualizarMayorV1_(SpreadsheetApp.getActive());
+
+function marcarMayorDesactualizadoV1_() {
+  PropertiesService.getDocumentProperties()
+    .setProperty(REGOPS_MAYOR_V1.PROPIEDAD_SUCIO, '1');
+}
+
+
+function obtenerPlanMayorEficienteV1_(hoja) {
+  var ultimaFila = hoja.getRange(hoja.getMaxRows(), 1)
+    .getNextDataCell(SpreadsheetApp.Direction.UP).getRow();
+  if (ultimaFila < 3) return {cuentas: []};
+
+  var valores = hoja.getRange(3, 1, ultimaFila - 2, 5).getValues();
+  return {
+    cuentas: valores.map(function(fila) {
+      return {
+        nombre: String(fila[0] || '').trim(),
+        id: Number(fila[1]) || 0,
+        grupo: String(fila[2] || '').trim(),
+        estado: Number(fila[3]) || 0,
+        orden: Number(fila[4]) || 0
+      };
+    }).filter(function(cuenta) {
+      return cuenta.nombre !== '';
+    }).sort(function(a, b) {
+      return a.orden - b.orden;
+    })
+  };
+}
+
+
+function acumularDiarioMayorEficienteV1_(diario) {
+  var ultimaFila = Math.max(
+    diario.getRange(diario.getMaxRows(), 1)
+      .getNextDataCell(SpreadsheetApp.Direction.UP).getRow(),
+    diario.getRange(diario.getMaxRows(), 3)
+      .getNextDataCell(SpreadsheetApp.Direction.UP).getRow(),
+    diario.getRange(diario.getMaxRows(), 5)
+      .getNextDataCell(SpreadsheetApp.Direction.UP).getRow()
+  );
+  var porCuenta = {};
+  var meses = {};
+
+  for (var inicio = REGOPS_MAYOR_V1.PRIMERA_FILA_DIARIO;
+    inicio <= ultimaFila;
+    inicio += REGOPS_MAYOR_V1.TAMANO_BLOQUE) {
+    var cantidad = Math.min(
+      REGOPS_MAYOR_V1.TAMANO_BLOQUE,
+      ultimaFila - inicio + 1
+    );
+    var bloque = diario.getRange(inicio, 1, cantidad, 6).getValues();
+
+    bloque.forEach(function(fila) {
+      var fecha = fila[0] instanceof Date ? fila[0] : new Date(fila[0]);
+      if (isNaN(fecha.getTime())) return;
+      var mes = fecha.getMonth() + 1;
+      var clave = fecha.getFullYear() + '-' + (mes < 10 ? '0' : '') + mes;
+      meses[clave] = true;
+      acumularCuentaMesMayorEficienteV1_(porCuenta, fila[2], clave, fila[3]);
+      acumularCuentaMesMayorEficienteV1_(porCuenta, fila[4], clave, fila[5]);
+    });
+  }
+
+  return {porCuenta: porCuenta, meses: meses};
+}
+
+
+function acumularCuentaMesMayorEficienteV1_(mapa, nombre, mes, importe) {
+  nombre = String(nombre || '').trim();
+  importe = Number(importe);
+  if (!nombre || !isFinite(importe)) return;
+  if (!mapa[nombre]) mapa[nombre] = {};
+  mapa[nombre][mes] = (mapa[nombre][mes] || 0) + importe;
+}
+
+
+function obtenerTasasMayorEficienteV1_(mayor) {
+  var actual = {
+    euro: Number(mayor.getRange('B1').getValue()) || 1,
+    brl: Number(mayor.getRange('B2').getValue()) || 0.20,
+    ars: Number(mayor.getRange('B3').getValue()) || 1
+  };
+  var ultimaColumna = Math.max(mayor.getLastColumn(), 4);
+  var encabezados = mayor.getRange(3, 4, 3, ultimaColumna - 3).getValues();
+  var historicas = {};
+  var anioActual = 0;
+
+  for (var i = 0; i < encabezados[0].length; i++) {
+    if (encabezados[1][i] !== '' && encabezados[1][i] !== null) {
+      anioActual = Number(encabezados[1][i]) || anioActual;
+    }
+    var numeroMes = numeroMesMayorEficienteV1_(encabezados[2][i]);
+    if (!anioActual || !numeroMes) continue;
+    var clave = anioActual + '-' + (numeroMes < 10 ? '0' : '') + numeroMes;
+    historicas[clave] = Number(encabezados[0][i]) || actual.ars;
+  }
+
+  return {actual: actual, historicas: historicas};
+}
+
+
+function convertirActualMayorEficienteV1_(nombre, valor, tasas) {
+  if (/\bARS\b/i.test(nombre)) return valor / (tasas.ars || 1) / 1000;
+  if (/\b(EURO|EUR)\b/i.test(nombre)) return valor * tasas.euro / 1000;
+  if (/\b(BRL|REAL|REALES)\b/i.test(nombre)) return valor * tasas.brl / 1000;
+  return valor / 1000;
+}
+
+
+function definicionesResumenMayorEficienteV1_() {
+  return [
+    {nombre: 'CJ ARS (USD)', coincide: function(n) {
+      return /^CJ\b/i.test(n) && /\bARS\b/i.test(n);
+    }},
+    {nombre: 'CJ USD', coincide: function(n) {
+      return /^CJ\b/i.test(n) && /\bUSD\b/i.test(n) && !/\bUSDT\b/i.test(n);
+    }},
+    {nombre: 'CJ EURO (USD)', coincide: function(n) {
+      return /^CJ\b/i.test(n) && /\b(EURO|EUR)\b/i.test(n);
+    }},
+    {nombre: 'CJ BRL (USD)', coincide: function(n) {
+      return /^CJ\b/i.test(n) && /\b(BRL|REAL|REALES)\b/i.test(n);
+    }},
+    {nombre: 'CC ARS (USD)', coincide: function(n) {
+      return /^CC\b/i.test(n) && /\bARS\b/i.test(n);
+    }},
+    {nombre: 'CC USD', coincide: function(n) {
+      return /^CC\b/i.test(n) && /\bUSD\b/i.test(n);
+    }},
+    {nombre: 'CC BRL (USD)', coincide: function(n) {
+      return /^CC\b/i.test(n) && /\b(BRL|REAL|REALES)\b/i.test(n);
+    }},
+    {nombre: 'INV USD (terceros)', coincide: function(n) {
+      return /^INV\s/i.test(n) && !/^INVP\b/i.test(n);
+    }},
+    {nombre: 'INVP USD (TT)', coincide: function(n) {
+      return /^INVP\b/i.test(n);
+    }}
+  ];
+}
+
+
+function aplicarFormatoMayorEficienteV1_(hoja, filas, columnas, cantidadMeses) {
+  hoja.getRange(1, 1, filas, columnas).setFontFamily('Nunito');
+  hoja.getRange(1, 2, filas, 1)
+    .setNumberFormat('#,##0;[Red](#,##0);-')
+    .setFontSize(10);
+  hoja.getRange(1, 3, filas, 1)
+    .setNumberFormat('#,##0;[Red](#,##0);-')
+    .setFontSize(8);
+  if (cantidadMeses) {
+    hoja.getRange(3, 4, filas - 2, cantidadMeses)
+      .setNumberFormat('#,##0;[Red](#,##0);-')
+      .setFontSize(8);
+  }
+  hoja.setFrozenRows(6);
+  hoja.setFrozenColumns(3);
+  hoja.setHiddenGridlines(false);
+}
+
+
+function asegurarColumnasMayorEficienteV1_(hoja, necesarias) {
+  if (hoja.getMaxColumns() < necesarias) {
+    hoja.insertColumnsAfter(
+      hoja.getMaxColumns(),
+      necesarias - hoja.getMaxColumns()
+    );
+  }
+}
+
+
+function combinarAniosMayorEficienteV1_(hoja, meses) {
+  if (!meses.length) return;
+  var inicio = 0;
+  while (inicio < meses.length) {
+    var anio = meses[inicio].substring(0, 4);
+    var fin = inicio;
+    while (fin + 1 < meses.length &&
+      meses[fin + 1].substring(0, 4) === anio) fin++;
+    var rango = hoja.getRange(4, 4 + inicio, 1, fin - inicio + 1);
+    if (fin > inicio) rango.merge();
+    rango.setValue(Number(anio)).setHorizontalAlignment('center');
+    inicio = fin + 1;
+  }
+}
+
+
+function nombreVisibleMayorEficienteV1_(nombre) {
+  var texto = String(nombre || '').trim();
+  return /^Retiro\b/i.test(texto)
+    ? texto.replace(/\bARS\b/gi, '').replace(/\s+/g, ' ').trim()
+    : texto;
+}
+
+
+function normalizarMayorEficienteV1_(texto) {
+  return String(texto || '').replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+}
+
+
+function buscarFilaMayorEficienteV1_(datos, etiqueta) {
+  var buscada = normalizarMayorEficienteV1_(etiqueta);
+  for (var i = 0; i < datos.length; i++) {
+    if (normalizarMayorEficienteV1_(datos[i][0]) === buscada) return i + 1;
+  }
+  return 0;
+}
+
+
+function buscarTodasFilasMayorEficienteV1_(datos, etiqueta) {
+  var filas = [];
+  var buscada = normalizarMayorEficienteV1_(etiqueta);
+  datos.forEach(function(fila, indice) {
+    if (normalizarMayorEficienteV1_(fila[0]) === buscada) filas.push(indice + 1);
+  });
+  return filas;
+}
+
+
+function buscarFilaPrefijoMayorEficienteV1_(datos, prefijo) {
+  var buscado = normalizarMayorEficienteV1_(prefijo).toLowerCase();
+  for (var i = 0; i < datos.length; i++) {
+    var valor = normalizarMayorEficienteV1_(datos[i][0]).toLowerCase();
+    if (valor.indexOf(buscado) === 0) return i + 1;
+  }
+  return 0;
+}
+
+
+function buscarFilaAlternativasMayorEficienteV1_(datos, alternativas) {
+  for (var i = 0; i < alternativas.length; i++) {
+    var fila = buscarFilaMayorEficienteV1_(datos, alternativas[i]);
+    if (fila) return fila;
+  }
+  return 0;
+}
+
+
+function sumarMayorEficienteV1_(cuentas, propiedad) {
+  return cuentas.reduce(function(total, cuenta) {
+    return total + (Number(cuenta[propiedad]) || 0);
+  }, 0);
+}
+
+
+function abreviarMesMayorEficienteV1_(mes) {
+  return ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
+    'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][mes - 1] || '';
+}
+
+
+function numeroMesMayorEficienteV1_(valor) {
+  if (valor instanceof Date && !isNaN(valor.getTime())) {
+    return valor.getMonth() + 1;
+  }
+  var texto = String(valor || '').trim().toLowerCase().substring(0, 3);
+  var meses = {
+    ene: 1, jan: 1, feb: 2, mar: 3, abr: 4, apr: 4,
+    may: 5, jun: 6, jul: 7, ago: 8, aug: 8,
+    sep: 9, oct: 10, nov: 11, dic: 12, dec: 12
+  };
+  return meses[texto] || Number(valor) || 0;
+}
+
+
+function redondearMayorEficienteV1_(numero) {
+  return Math.round(Number(numero) || 0);
 }
