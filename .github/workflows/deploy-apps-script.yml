@@ -30,7 +30,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
 
       - name: Validate clasp credentials
         env:
@@ -43,4 +43,4 @@ jobs:
           printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
 
       - name: Deploy to Apps Script
-        run: npx --yes @google/clasp@3.0.6 push --force
+        run: npx --yes @google/clasp@3.3.0 push --force
