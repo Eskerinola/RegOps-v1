@@ -218,11 +218,11 @@ function onEdit(e) {
       return;
     }
 
-    // C1 de Mayor funciona como botón de actualización.
+    // C1 marca la solicitud. La actualización pesada la ejecuta el
+    // disparador instalable, que dispone de más tiempo que el onEdit simple.
     if (sheetName === 'Mayor' && range.getA1Notation() === 'C1') {
       if (String(e.value || '').toUpperCase() === 'TRUE') {
-        range.setValue(false);
-        actualizarMayorV1();
+        marcarMayorDesactualizadoV1_();
       }
       return;
     }
@@ -342,7 +342,24 @@ function actualizarTimestampIngresoV1_(sheet, range) {
  */
 function timestampOnEditRegOpsV1(e) {
   if (!e || !e.range) return;
-  actualizarTimestampIngresoV1_(e.range.getSheet(), e.range);
+
+  var range = e.range;
+  var sheet = range.getSheet();
+
+  // El mismo disparador instalable atiende el botón del Mayor.
+  // Así la actualización no queda limitada a los 30 segundos del onEdit simple.
+  if (sheet.getName() === 'Mayor' && range.getA1Notation() === 'C1') {
+    if (String(e.value || '').toUpperCase() === 'TRUE') {
+      try {
+        actualizarMayorV1();
+      } finally {
+        range.setValue(false);
+      }
+    }
+    return;
+  }
+
+  actualizarTimestampIngresoV1_(sheet, range);
 }
 
 /**
