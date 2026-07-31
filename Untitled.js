@@ -32,7 +32,7 @@ function onOpen() {
   configurarSeparadoresNumericosV1_(ss);
   asegurarFormatoOperacionesCompensadas_(ss);
   asegurarModeloRelacionalCuentasV1_(ss);
-  actualizarMayorV1();
+  actualizarMayorSiCorrespondeV1_();
 
   var diario = ss.getSheetByName('Diario');
   if (diario) ss.setActiveSheet(diario);
@@ -253,6 +253,14 @@ function onEdit(e) {
     // 4. En Diario, C y E muestran nombres pero guardan ID ocultos.
     if (sheetName === 'Diario') {
       actualizarIdsCuentasEditadasV1_(sheet, range);
+
+      // Una edición de los movimientos sólo marca el Mayor como pendiente.
+      // El cálculo pesado se ejecuta al abrir por el propietario o con el botón.
+      var tocaMovimientos =
+        range.getLastRow() >= 6 &&
+        primeraColumnaEditada <= 6 &&
+        ultimaColumnaEditada >= 1;
+      if (tocaMovimientos) marcarMayorDesactualizadoV1_();
     }
 
     // 5. Timestamp automático en Diario.
