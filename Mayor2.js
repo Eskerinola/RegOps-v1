@@ -8,26 +8,34 @@ function crearMayor2V1() {
   var diario = ss.getSheetByName('Diario');
   var mayor = ss.getSheetByName('Mayor');
   var definicion = ss.getSheetByName('CtasDefinicion');
-  if (!diario || !mayor || !definicion) {
-    throw new Error('Se requieren las hojas Diario, Mayor y CtasDefinicion.');
+  if (!diario || !definicion) {
+    throw new Error('Se requieren las hojas Diario y CtasDefinicion.');
   }
 
   var mayor2 = ss.getSheetByName('Mayor2');
-  if (!mayor2) mayor2 = ss.insertSheet('Mayor2', mayor.getIndex() + 1);
-
-  var filas = mayor.getLastRow();
-  var columnas = mayor.getLastColumn();
-  mayor2.getRange(1, 1, mayor2.getMaxRows(), mayor2.getMaxColumns()).breakApart();
-  mayor2.clear();
-  if (mayor2.getMaxRows() < filas) {
-    mayor2.insertRowsAfter(mayor2.getMaxRows(), filas - mayor2.getMaxRows());
+  if (!mayor2) {
+    if (!mayor) {
+      throw new Error('No existe Mayor2 ni Mayor como plantilla inicial.');
+    }
+    mayor2 = ss.insertSheet('Mayor2', mayor.getIndex() + 1);
+    var filasPlantilla = mayor.getLastRow();
+    var columnasPlantilla = mayor.getLastColumn();
+    if (mayor2.getMaxRows() < filasPlantilla) {
+      mayor2.insertRowsAfter(
+        mayor2.getMaxRows(), filasPlantilla - mayor2.getMaxRows()
+      );
+    }
+    if (mayor2.getMaxColumns() < columnasPlantilla) {
+      mayor2.insertColumnsAfter(
+        mayor2.getMaxColumns(), columnasPlantilla - mayor2.getMaxColumns()
+      );
+    }
+    mayor.getRange(1, 1, filasPlantilla, columnasPlantilla)
+      .copyTo(mayor2.getRange(1, 1, filasPlantilla, columnasPlantilla));
   }
-  if (mayor2.getMaxColumns() < columnas) {
-    mayor2.insertColumnsAfter(mayor2.getMaxColumns(), columnas - mayor2.getMaxColumns());
-  }
 
-  mayor.getRange(1, 1, filas, columnas)
-    .copyTo(mayor2.getRange(1, 1, filas, columnas));
+  var filas = mayor2.getLastRow();
+  var columnas = mayor2.getLastColumn();
   mayor2.getRange(1, 1, filas, columnas).breakApart();
 
   var meses = obtenerMesesMayor2V1_(diario);
