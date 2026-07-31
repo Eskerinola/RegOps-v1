@@ -247,6 +247,7 @@ function onEdit(e) {
 
     if (tocaEstructuraCuentas) {
       procesarEdicionPlanCuentasV1_(ss);
+      marcarMayorDesactualizadoV1_();
       return;
     }
 
