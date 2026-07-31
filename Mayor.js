@@ -38,7 +38,9 @@ function actualizarMayorV1() {
 
     var filas = mayor.getLastRow();
     var columnas = mayor.getLastColumn();
-    mayor.getRange(1, 1, filas, columnas).breakApart();
+    // Sólo la fila de años contiene combinaciones. No tocar toda la hoja:
+    // hacerlo provocaba recalculaciones innecesarias en las fórmulas del Diario.
+    if (columnas > 3) mayor.getRange(4, 4, 1, columnas - 3).breakApart();
     var datos = mayor.getRange(1, 1, filas, columnas).getValues();
 
     var tasaArsActual = tasas.actual.ars || 1;
@@ -217,7 +219,12 @@ function actualizarMayorV1() {
       datos[filaCobertura - 1][1] = cobertura;
     }
 
-    mayor.getRange(1, 1, filas, columnas).setValues(datos);
+    // B1:B3 son entradas manuales de Tasas de Cambio. Se leen, pero no se
+    // reescriben durante el cálculo. Así el Mayor del Diario no recalcula
+    // todos sus SUMIFS cada vez que se pulsa Actualizar.
+    if (filas > 3) {
+      mayor.getRange(4, 1, filas - 3, columnas).setValues(datos.slice(3));
+    }
     combinarAniosMayorEficienteV1_(mayor, meses);
     aplicarFormatoMayorEficienteV1_(mayor, filas, columnas, meses.length);
 
