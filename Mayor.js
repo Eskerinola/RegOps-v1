@@ -297,29 +297,29 @@ function acumularDiarioMayorEficienteV1_(diario) {
   var porCuenta = {};
   var meses = {};
 
-  for (var inicio = REGOPS_MAYOR_V1.PRIMERA_FILA_DIARIO;
-    inicio <= ultimaFila;
-    inicio += REGOPS_MAYOR_V1.TAMANO_BLOQUE) {
-    var cantidad = Math.min(
-      REGOPS_MAYOR_V1.TAMANO_BLOQUE,
-      ultimaFila - inicio + 1
-    );
-    var bloque = diario.getRange(inicio, 1, cantidad, 6).getValues();
-
-    bloque.forEach(function(fila) {
-      var fecha = fila[0] instanceof Date ? fila[0] : new Date(fila[0]);
-      if (isNaN(fecha.getTime())) return;
-      var mes = fecha.getMonth() + 1;
-      var clave = fecha.getFullYear() + '-' + (mes < 10 ? '0' : '') + mes;
-      meses[clave] = true;
-      acumularCuentaMesMayorEficienteV1_(porCuenta, fila[2], clave, fila[3]);
-      acumularCuentaMesMayorEficienteV1_(porCuenta, fila[4], clave, fila[5]);
-    });
+  if (ultimaFila < REGOPS_MAYOR_V1.PRIMERA_FILA_DIARIO) {
+    return {porCuenta: porCuenta, meses: meses};
   }
+
+  // El Diario actual entra cómodamente en una sola lectura. Evitar múltiples
+  // viajes getRange/getValues reduce de forma importante el tiempo del botón.
+  var cantidad = ultimaFila - REGOPS_MAYOR_V1.PRIMERA_FILA_DIARIO + 1;
+  var valores = diario.getRange(
+    REGOPS_MAYOR_V1.PRIMERA_FILA_DIARIO, 1, cantidad, 6
+  ).getValues();
+
+  valores.forEach(function(fila) {
+    var fecha = fila[0] instanceof Date ? fila[0] : new Date(fila[0]);
+    if (isNaN(fecha.getTime())) return;
+    var mes = fecha.getMonth() + 1;
+    var clave = fecha.getFullYear() + '-' + (mes < 10 ? '0' : '') + mes;
+    meses[clave] = true;
+    acumularCuentaMesMayorEficienteV1_(porCuenta, fila[2], clave, fila[3]);
+    acumularCuentaMesMayorEficienteV1_(porCuenta, fila[4], clave, fila[5]);
+  });
 
   return {porCuenta: porCuenta, meses: meses};
 }
-
 
 function acumularCuentaMesMayorEficienteV1_(mapa, nombre, mes, importe) {
   nombre = String(nombre || '').trim();
