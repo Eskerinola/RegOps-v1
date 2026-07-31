@@ -117,7 +117,7 @@ function crearMayor2V1() {
   var filaPatrimonio = buscarFilaEtiquetaMayor2V1_(datos, 'PATRIMONIO NETO');
   var cuentasPatrimonio = cuentas.filter(function(cuenta) {
     return cuenta.filaCanonica &&
-      /^(CJ|CC|INV)\b/i.test(cuenta.nombre) &&
+      /^(CJ|CC|INV|INVP)\b/i.test(cuenta.nombre) &&
       !/^Retiro\b/i.test(cuenta.nombre);
   });
   if (filaPatrimonio) {
