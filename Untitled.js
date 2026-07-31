@@ -29,10 +29,14 @@ function onOpen() {
   var ss = SpreadsheetApp.getActive();
 
   prepararHojasRegOpsV1_(ss);
+
+  // El Mayor se actualiza primero. Las tareas de formato y validación pueden
+  // tardar sobre planillas grandes y antes impedían que esta llamada se ejecutara.
+  actualizarMayorSiCorrespondeV1_();
+
   configurarSeparadoresNumericosV1_(ss);
   asegurarFormatoOperacionesCompensadas_(ss);
   asegurarModeloRelacionalCuentasV1_(ss);
-  actualizarMayorSiCorrespondeV1_();
 
   var diario = ss.getSheetByName('Diario');
   if (diario) ss.setActiveSheet(diario);
