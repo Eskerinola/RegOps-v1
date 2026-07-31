@@ -214,6 +214,15 @@ function onEdit(e) {
       return;
     }
 
+    // C1 de Mayor funciona como botón de actualización.
+    if (sheetName === 'Mayor' && range.getA1Notation() === 'C1') {
+      if (String(e.value || '').toUpperCase() === 'TRUE') {
+        range.setValue(false);
+        actualizarMayorV1();
+      }
+      return;
+    }
+
     if (row <= 1) return;
 
     var ss        = SpreadsheetApp.getActive();
